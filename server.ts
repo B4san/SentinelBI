@@ -1,7 +1,7 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { geminiHandler } from "./api/gemini";
+import geminiHandler from "./api/gemini";
 import { GoogleGenAI } from '@google/genai';
 
 async function startServer() {
