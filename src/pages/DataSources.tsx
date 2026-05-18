@@ -201,7 +201,7 @@ Respond ONLY with valid JSON, nothing else. No markdown wrappers.`;
 
       let res = await fetch('/api/gemini', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('sentinel_api_key') || '' },
         body: JSON.stringify({
           model: 'gemini-3-flash-preview',
           contents: [{ role: 'user', parts: [{ text: prompt }] }]
@@ -210,7 +210,7 @@ Respond ONLY with valid JSON, nothing else. No markdown wrappers.`;
       if (!res.ok) {
         res = await fetch('/api/gemini', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('sentinel_api_key') || '' },
           body: JSON.stringify({
              model: 'gemini-3-flash-preview', // fall back if first attempt fails
              contents: [{ role: 'user', parts: [{ text: prompt }] }]

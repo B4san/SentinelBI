@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
+import { geminiHandler } from "./api/gemini";
 import { GoogleGenAI } from '@google/genai';
 
 async function startServer() {
@@ -10,36 +11,7 @@ async function startServer() {
   app.use(express.json());
 
   // API Route for Gemini
-  app.post("/api/gemini", async (req, res) => {
-    try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({ error: "Gemini API Key missing on server" });
-      }
-
-      const ai = new GoogleGenAI({ apiKey });
-      const { model, contents } = req.body;
-
-      let response;
-      try {
-        response = await ai.models.generateContent({
-          model: model || 'gemini-3-flash-preview',
-          contents,
-        });
-      } catch (firstErr: any) {
-        console.warn(`Error with primary model ${model || 'gemini-3-flash-preview'}, falling back to gemini-2.5-flash`, firstErr.message || firstErr);
-        response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents,
-        });
-      }
-
-      res.json({ text: response.text });
-    } catch (error: any) {
-      console.error("Gemini API Error:", error);
-      res.status(500).json({ error: error.message || "Failed to generate content" });
-    }
-  });
+  app.post("/api/gemini", geminiHandler);
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

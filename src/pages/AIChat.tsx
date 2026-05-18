@@ -74,7 +74,7 @@ OUTPUT A STRICT JSON OBJECT ONLY. NO CODE BLOCKS OR MARKDOWN.
 
       const secRes = await fetch('/api/gemini', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('sentinel_api_key') || '' },
         body: JSON.stringify({
           model: 'gemini-3-flash-preview',
           contents: securityPrompt
@@ -155,7 +155,7 @@ ${Object.entries(truth.categoricalSummary).map(([col, stat]) => `  - ${col}: ${s
 
       const response = await fetch('/api/gemini', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('sentinel_api_key') || '' },
         body: JSON.stringify({
           model: 'gemini-3-flash-preview',
           contents: `You are the Principal Staff Engineer, Enterprise AI Architect, and Senior Diagnostic Data Analyzer for Sentinel BI. The user is asking about their dataset.

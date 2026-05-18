@@ -112,6 +112,34 @@ export function Settings() {
          <div className="h-1 bg-gradient-to-r from-blue-500 to-indigo-500" />
          <CardHeader>
             <CardTitle className="text-xl font-bold flex items-center text-gray-900">
+              <Key className="w-5 h-5 text-blue-500 mr-2" /> Custom LLM Key (Local)
+            </CardTitle>
+            <CardDescription>Optionally bypass the platform API key. Never shared with the server permanently.</CardDescription>
+         </CardHeader>
+         <CardContent className="space-y-6">
+            <div className="space-y-2">
+               <label className="text-sm font-bold text-gray-700">Gemini API Key</label>
+               <Input 
+                 type="password" 
+                 placeholder="AIza..."
+                 defaultValue={localStorage.getItem('sentinel_api_key') || ''}
+                 onBlur={(e) => {
+                   if(e.target.value) {
+                     localStorage.setItem('sentinel_api_key', e.target.value);
+                   } else {
+                     localStorage.removeItem('sentinel_api_key');
+                   }
+                 }}
+                 className="max-w-xl font-mono" 
+               />
+               <p className="text-xs text-gray-400">Stored safely in your browser's localStorage. Remove to use default platform key.</p>
+            </div>
+         </CardContent>
+      </Card>
+
+      <Card className="border-none soft-shadow overflow-hidden">
+         <CardHeader>
+            <CardTitle className="text-xl font-bold flex items-center text-gray-900">
               <FileText className="w-5 h-5 text-blue-500 mr-2" /> Export & Agent Policies
             </CardTitle>
             <CardDescription>Control how data leaves the intelligence perimeter and limit agent output.</CardDescription>

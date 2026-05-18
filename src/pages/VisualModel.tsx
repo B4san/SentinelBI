@@ -449,10 +449,10 @@ Return ONLY a raw JSON strictly following this structure { fontFamily: "font-san
             }
          ]
        };
-       let res = await fetch('/api/gemini', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+       let res = await fetch('/api/gemini', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('sentinel_api_key') || '' }, body: JSON.stringify(payload) });
        if (!res.ok) {
            payload.model = 'gemini-3-flash-preview';
-           res = await fetch('/api/gemini', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+           res = await fetch('/api/gemini', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('sentinel_api_key') || '' }, body: JSON.stringify(payload) });
        }
        const jsonResponse = await res.json();
        let newLayoutParams = jsonResponse.text.replace(/```json\n?/g, '').replace(/```\n?/g, '');
@@ -524,10 +524,10 @@ Return ONLY a raw JSON strictly following this structure { fontFamily: "font-san
          ]
        };
 
-       let res = await fetch('/api/gemini', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+       let res = await fetch('/api/gemini', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('sentinel_api_key') || '' }, body: JSON.stringify(payload) });
        if (!res.ok) {
            payload.model = 'gemini-3-flash-preview';
-           res = await fetch('/api/gemini', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+           res = await fetch('/api/gemini', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('sentinel_api_key') || '' }, body: JSON.stringify(payload) });
        }
        const jsonResponse = await res.json();
        let newLayoutParams = jsonResponse.text.replace(/```json\n?/g, '').replace(/```\n?/g, '');
@@ -573,7 +573,7 @@ Return ONLY a raw JSON strictly following this structure { fontFamily: "font-san
       
       const res = await fetch('/api/gemini', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('sentinel_api_key') || '' },
         body: JSON.stringify(payload)
       });
       const data = await res.json();

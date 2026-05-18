@@ -41,7 +41,7 @@ export function Dashboard() {
       
       const res = await fetch('/api/gemini', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('sentinel_api_key') || '' },
         body: JSON.stringify(payload)
       });
       const data = await res.json();

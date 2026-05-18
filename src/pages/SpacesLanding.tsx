@@ -44,7 +44,7 @@ export function SpacesLanding() {
 
              const response = await fetch('/api/gemini', {
                method: 'POST',
-               headers: { 'Content-Type': 'application/json' },
+               headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('sentinel_api_key') || '' },
                body: JSON.stringify({
                  model: 'gemini-3-flash-preview',
                  contents: prompt
