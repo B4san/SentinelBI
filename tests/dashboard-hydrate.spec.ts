@@ -11,9 +11,9 @@ test('hydrated /d page styles, slicer, cross-filter, and compare', async ({ page
   await page.waitForSelector('.dash-board');
   await expect(page.locator('.dash-card').first()).toBeVisible();
   const padded = await page.evaluate(() => {
-    const board = document.querySelector('.dash-board') as HTMLElement | null;
-    if (!board) return 0;
-    return board.getBoundingClientRect().left;
+    const card = document.querySelector('.dash-card') as HTMLElement | null;
+    if (!card) return 0;
+    return card.getBoundingClientRect().left;
   });
   expect(padded).toBeGreaterThan(16);
 

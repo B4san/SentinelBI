@@ -25,7 +25,7 @@ import type {
 import { LAYOUT_ARCHETYPES } from './types';
 import { nearestComponent } from './catalog';
 import { finalizeDashboardSpec } from './finalize';
-import { computeDerivedValue, formatDerived, proposeDerivedMeasures } from './measures';
+import { computeDerivedValue, formatDerived, inferAggregation, proposeDerivedMeasures } from './measures';
 
 export interface GenerateDashboardContext {
   title?: string;
@@ -76,7 +76,7 @@ function chooseChartType(
 
 function kpiTitle(field: string | undefined, aggregation: Aggregation): string {
   if (!field) return 'Metric';
-  const name = prettyField(field).replace(/seconds/i, 'duration').replace(/dso days/i, 'DSO');
+  const name = prettyField(field).replace(/seconds/i, 'duration').replace(/dso days/i, 'DSO').replace(/^avg\s+/i, '');
   if (aggregation === 'avg' || /^avg_|_rate$|_seconds$/i.test(field)) return `Avg ${name.toLowerCase()}`;
   if (aggregation === 'max') return `Peak ${name.toLowerCase()}`;
   if (aggregation === 'min') return `Floor ${name.toLowerCase()}`;
@@ -96,7 +96,7 @@ function measureKpi(
     title: extra?.title || kpiTitle(field, aggregation),
     field,
     aggregation,
-    format: metricFormat(field),
+    format: extra?.format || metricFormat(field),
     value: extra?.value ?? aggregateNumber(values, aggregation),
     delta: extra?.delta ?? change?.deltaPct,
     sparkline: extra?.sparkline ?? sparklineValues(rows, field, timeField),
@@ -133,7 +133,7 @@ export function buildBusinessKpis(dataset: DashboardDataset): DerivedKpi[] {
   };
 
   for (const field of nums) {
-    const aggregation: Aggregation = metricFormat(field) === 'percent' ? 'avg' : 'sum';
+    const aggregation: Aggregation = inferAggregation(field, metricFormat(field));
     push(measureKpi(rows, field, aggregation, times[0]));
   }
 
@@ -344,9 +344,11 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
           ? times[0]
           : cats[chartCursor % Math.max(cats.length, 1)] || times[0] || nums[0];
     const intentShift = Math.abs(makeSeed([ctx.intent, slot.role, chartCursor])) % Math.max(nums.length, 1);
-    const yField = slot.role === 'compare-b'
-      ? (nums[1] || nums[0])
-      : nums[(chartCursor + intentShift) % Math.max(nums.length, 1)] || nums[0];
+    const yField = slot.featured
+      ? (nums[0] || nums[1])
+      : slot.role === 'compare-b'
+        ? (nums[1] || nums[0])
+        : nums[(chartCursor + intentShift) % Math.max(nums.length, 1)] || nums[0];
     const encoding = `${xField}:${yField}`;
     let chartType = chooseChartType(rng, slot.prefer, {
       hasTime: Boolean(times[0] && xField === times[0]),

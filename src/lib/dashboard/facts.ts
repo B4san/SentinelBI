@@ -338,7 +338,7 @@ export function dedupeHeadlines(spec: DashboardSpec): DashboardSpec {
   if (insight && headline && insightTitle && normalizePhrase(headline) === normalizePhrase(insightTitle)) {
     next.widgets = spec.widgets.map((w) => (
       w.id === insight.id
-        ? { ...w, title: w.insight?.text?.slice(0, 48) || w.title, insight: { ...w.insight, title: undefined, text: w.insight?.text || '' } }
+        ? { ...w, title: neverMidWord(w.insight?.text || w.title, 64).replace(/\.$/, ''), insight: { ...w.insight, title: undefined, text: w.insight?.text || '' } }
         : w
     ));
   }

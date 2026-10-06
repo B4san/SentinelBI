@@ -16,7 +16,7 @@ export interface FieldClasses {
 }
 
 const TIME_NAME = /(_date|_at|_time)$|^(date|time|day|week|month|year|opened|closed|period|timestamp|created|updated)/i;
-const MONEY_NAME = /rev|sales|amount|price|gmv|arr|mrr|acv|spend|cost|payroll/i;
+const MONEY_NAME = /rev|sales|amount|price|gmv|arr|mrr|acv|spend|cost|payroll|opex|ebitda|budget|cogs/i;
 const RATE_NAME = /(rate|margin|csat|nps|pct|percent|bounce|attrition|acceptRate)$/i;
 
 export function prettyField(name: string): string {

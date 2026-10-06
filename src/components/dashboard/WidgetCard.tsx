@@ -179,15 +179,28 @@ function WidgetBody({
         className={`h-full flex ${strip ? 'flex-row items-center gap-4 px-4 py-3' : 'flex-col justify-start px-5 py-4'}`}
         style={{ borderLeft: featured ? `3px solid ${bar}` : undefined }}
       >
-        <p className="text-[12px] font-semibold shrink-0" style={{ color: palette.accent }}>
-          {widget.insight?.title || widget.title || 'Finding'}
-        </p>
-        <p
-          className={`${featured ? (compact ? 'text-[15px] leading-snug mt-2' : 'text-[16px] leading-relaxed mt-3') : strip ? 'text-[13px] leading-snug' : 'text-[13px] leading-relaxed mt-2'}`}
-          style={{ color: palette.text }}
-        >
-          {widget.insight?.text || widget.subtitle}
-        </p>
+        {(() => {
+          const title = widget.insight?.title || widget.title || 'Finding';
+          const text = widget.insight?.text || widget.subtitle || '';
+          const same = title.replace(/[^a-z0-9]+/gi, ' ').trim().toLowerCase()
+            === text.replace(/[^a-z0-9]+/gi, ' ').trim().toLowerCase()
+            || text.toLowerCase().startsWith(title.toLowerCase().slice(0, 24));
+          return (
+            <>
+              {!same && (
+                <p className="text-[12px] font-semibold shrink-0" style={{ color: palette.accent }}>
+                  {title}
+                </p>
+              )}
+              <p
+                className={`${featured ? (compact ? 'text-[15px] leading-snug mt-2' : 'text-[16px] leading-relaxed mt-3') : strip ? 'text-[13px] leading-snug' : 'text-[13px] leading-relaxed mt-2'}`}
+                style={{ color: palette.text }}
+              >
+                {text}
+              </p>
+            </>
+          );
+        })()}
       </div>
     );
   }
