@@ -212,7 +212,7 @@ function applyShareOrSlope(
   valueKey: string,
 ): Array<Record<string, string | number>> {
   const title = `${widget.title} ${widget.subtitle || ''} ${widget.componentId || ''}`;
-  const wantsShare = /share|% of total|mix/i.test(title) || widget.componentId === 'arc.waffle-chart';
+  const wantsShare = /share|% of total/i.test(title) || widget.componentId === 'arc.waffle-chart';
   const wantsSlope = /change|growth driver|slope/i.test(title) || widget.componentId === 'arc.slope-chart';
   if (wantsSlope) {
     const fields = classifyFields({ id: widget.datasetId || 'd', name: 'd', data: rows });

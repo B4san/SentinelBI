@@ -35,11 +35,13 @@ export function WidgetCard({
   const radius = spec.theme.radius || 'rounded-2xl';
   const isKpi = widget.type === 'kpi';
   const isSection = widget.type === 'section';
+  const isInsight = widget.type === 'insight';
+  const hideChrome = isKpi || isSection || isInsight;
 
   return (
     <article
       onClick={() => onSelect?.(widget.id)}
-      className={`dash-card h-full w-full min-w-0 min-h-0 flex flex-col ${isSection ? 'overflow-visible' : 'overflow-hidden'} border ${radius} ${selected ? 'ring-2 ring-offset-2' : ''} ${isSection ? 'dash-card-flush' : ''}`}
+      className={`dash-card h-full w-full min-w-0 min-h-0 flex flex-col ${isSection || isInsight ? 'overflow-visible' : 'overflow-hidden'} border ${radius} ${selected ? 'ring-2 ring-offset-2' : ''} ${isSection ? 'dash-card-flush' : ''}`}
       style={{
         background: isSection ? 'transparent' : palette.surface,
         color: palette.text,
@@ -51,7 +53,7 @@ export function WidgetCard({
             : '0 1px 2px rgba(15,23,42,0.04), 0 10px 24px -18px rgba(15,23,42,0.18)',
       }}
     >
-      {!isKpi && !isSection && (
+      {!hideChrome && (
         <header className="flex items-start justify-between gap-3 px-4 pt-3.5 pb-1 shrink-0">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -85,7 +87,7 @@ export function WidgetCard({
           )}
         </header>
       )}
-      <div className={`min-h-0 min-w-0 flex-1 ${isKpi || isSection ? '' : 'px-3 pb-3 relative'}`}>
+      <div className={`min-h-0 min-w-0 flex-1 ${hideChrome ? '' : 'px-3 pb-3 relative'}`}>
         <WidgetBody spec={spec} widget={widget} datasets={datasets} filters={filters} editing={editing} onPointClick={onPointClick} highlight={highlight} />
       </div>
     </article>
@@ -177,11 +179,13 @@ function WidgetBody({
     const strip = widget.role === 'strip';
     const tone = widget.insight?.tone || 'neutral';
     const bar = tone === 'warning' ? '#e11d48' : tone === 'positive' ? palette.accent : palette.muted;
-    const title = widget.insight?.title || widget.title || 'Finding';
+    const title = widget.insight?.title || (widget.title.length <= 48 ? widget.title : '');
     const text = widget.insight?.text || widget.subtitle || '';
-    const same = title.replace(/[^a-z0-9]+/gi, ' ').trim().toLowerCase()
-      === text.replace(/[^a-z0-9]+/gi, ' ').trim().toLowerCase()
-      || text.toLowerCase().startsWith(title.toLowerCase().slice(0, 24));
+    const norm = (value: string) => value.replace(/[^a-z0-9]+/gi, ' ').trim().toLowerCase();
+    const same = !title
+      || norm(title) === norm(text)
+      || text.toLowerCase().includes(title.toLowerCase())
+      || title.length > 48;
     const chips = text.split(/(?<=\.)\s+/).filter(Boolean).slice(0, 3);
     return (
       <div
@@ -219,7 +223,7 @@ function WidgetBody({
     const model = prepareTableModel(datasets, widget, filters);
     const compareOn = Boolean(widget.compare);
     return (
-      <div className="h-full text-[12px] overflow-hidden">
+      <div className="h-full text-[12px] overflow-auto">
         <table className="w-full table-fixed">
           <thead>
             <tr>

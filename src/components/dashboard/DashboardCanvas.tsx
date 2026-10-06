@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import type { DashboardDataset, DashboardSpec, DashboardWidget, WidgetFilter } from '../../lib/dashboard/types';
 import { CHART_TYPES } from '../../lib/dashboard/types';
-import { classifyFields } from '../../lib/dashboard/insights';
+import { classifyFields, prettyField } from '../../lib/dashboard/insights';
 import { parseLocalDate, toLocalISODate } from '../../lib/dashboard/dates';
 import { harmonizePalette } from '../../lib/dashboard/palettes';
 import { DateRangePicker, type DateRangeValue } from '../arc/date-range-picker/date-range-picker';
@@ -118,7 +118,7 @@ export function DashboardCanvas({
         )}
       </header>
 
-      <div className="dash-toolbar mb-4 flex flex-wrap items-center gap-2">
+      <div className="dash-toolbar mb-4 flex flex-wrap items-center gap-2 overflow-visible relative z-20">
         {timeField && (
           <DateRangePicker
             value={range}
@@ -143,7 +143,7 @@ export function DashboardCanvas({
             value={slicerField}
             onChange={(e) => { setSlicerField(e.target.value); setSlicer(''); }}
           >
-            {fields.dimensions.map((d) => <option key={d} value={d}>{d}</option>)}
+            {fields.dimensions.map((d) => <option key={d} value={d}>{prettyField(d)}</option>)}
           </select>
         )}
         {slicerValues.length > 0 && (

@@ -135,6 +135,7 @@ export function buildBusinessKpis(dataset: DashboardDataset): DerivedKpi[] {
   };
 
   for (const field of nums) {
+    if (/gross_margin|discount_rate|bounce_rate/i.test(field)) continue;
     const aggregation: Aggregation = inferAggregation(field, metricFormat(field));
     push(measureKpi(rows, field, aggregation, times[0]));
   }
@@ -231,6 +232,7 @@ function rankKpis(pool: DerivedKpi[], intent: string | undefined, dataset: Dashb
     const score = (kpi: DerivedKpi) => {
       let n = 0;
       if (/opex vs budget|hardware opex/i.test(kpi.title)) n -= 6;
+      if (/\baov\b/.test(kpi.title) && !names.some((name) => /(^|_)units?$/.test(name.toLowerCase()) || /order/i.test(name))) n += 12;
       if (/\baov\b|gross margin|discount rate/i.test(kpi.title)) n -= 4;
       if (/total budget opex|total opex/i.test(kpi.title) && !/vs/.test(kpi.title)) n += 8;
       if (wanted && kpi.title.toLowerCase().split(/\s+/).some((word) => wanted.includes(word))) n -= 2;
@@ -352,7 +354,7 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
         title: cats[0] && measure
           ? `${prettyField(cats[0])}${cats[1] ? ` × ${prettyField(cats[1])}` : ''} by ${prettyField(measure).toLowerCase()}`
           : measure ? `Top 12 by ${prettyField(measure).toLowerCase()}` : 'Detail slice',
-        layout: slot.layout,
+        layout: { ...slot.layout, h: Math.max(slot.layout.h, 6) },
         datasetId: primary.id,
         componentId: 'arc.sortable-data-table',
         columns: [...cats.slice(0, 2), ...times.slice(0, 1), ...nums.slice(0, 3)].filter(Boolean),
@@ -479,7 +481,7 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
       componentId,
       series,
       targetField: budget,
-      groupField: wantMultiples ? cats[0] : cats[(chartCursor + 1) % Math.max(cats.length, 1)],
+      groupField: wantMultiples ? cats[0] : undefined,
       color: palette.chart[index % palette.chart.length],
       aggregation: metricFormat(yField) === 'percent' ? 'avg' : 'sum',
     });

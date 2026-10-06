@@ -7,7 +7,7 @@ import { attachComputedFacts, collectBoardFacts, computeWidgetKpi, rewriteUnveri
 import { generateDashboardOnServer } from '../src/lib/dashboard/generate';
 import { prettyField } from '../src/lib/dashboard/insights';
 import { computeDerivedValue, proposeDerivedMeasures, snapCandidate } from '../src/lib/dashboard/measures';
-import { SAMPLE_SALES_ROWS } from '../src/lib/sampleData';
+import { SAMPLE_FINANCE_ROWS, SAMPLE_SALES_ROWS } from '../src/lib/sampleData';
 import { validateDashboardSpec } from '../src/lib/dashboard/validate';
 
 const sales = {
@@ -212,6 +212,35 @@ describe('sales numbers', () => {
     expect(title.length).toBeLessThanOrEqual(60);
     expect(title).not.toMatch(/ the$/i);
     expect(title).not.toMatch(/—$/);
+  });
+
+  it('does not invent AOV on monthly finance grain', () => {
+    const finance = {
+      id: 'ds-finance',
+      name: 'Finance',
+      data: SAMPLE_FINANCE_ROWS,
+      columns: Object.keys(SAMPLE_FINANCE_ROWS[0] || {}).map((name) => ({ name })),
+    };
+    expect(proposeDerivedMeasures(finance).some((p) => p.id === 'aov')).toBe(false);
+  });
+
+  it('keeps insight titles distinct from the body', () => {
+    const spec = rewriteUnverifiedCopy(validateDashboardSpec({
+      title: 'Sales',
+      widgets: [{
+        type: 'insight',
+        title: 'North generated $91.0M in revenue, 25% of the total',
+        insight: {
+          title: 'North generated $91.0M in revenue, 25% of the total',
+          text: 'North generated $91.0M in revenue, 25% of the total.',
+        },
+      }],
+    }), [sales]);
+    const insight = spec.widgets.find((w) => w.type === 'insight');
+    const heading = insight?.insight?.title || insight?.title || '';
+    const body = insight?.insight?.text || '';
+    expect(heading.length).toBeLessThanOrEqual(48);
+    expect(body.toLowerCase()).not.toBe(heading.toLowerCase());
   });
 });
 

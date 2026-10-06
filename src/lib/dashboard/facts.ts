@@ -405,6 +405,18 @@ function neverMidWord(text: string, max = 220): string {
   return `${(cut > 24 ? slice.slice(0, cut) : slice).replace(/[,\s—–-]+$/, '')}.`;
 }
 
+function editorialInsightTitle(title: string | undefined, body: string, sentences: string[]): string {
+  const candidates = [title, sentences[0], body].filter((value): value is string => Boolean(value));
+  for (const candidate of candidates) {
+    if (/leads|cooled|accelerated|spread|behind|overspent|rose|fell/i.test(candidate) && candidate.length <= 48) {
+      return shortInsightTitle(candidate, 48);
+    }
+  }
+  const generated = body.match(/^(.{2,36}?)\s+generated\s+.+\s+in\s+([^,.]+)/i);
+  if (generated) return shortInsightTitle(`${generated[1].trim()} leads ${generated[2].trim()}`, 48);
+  return shortInsightTitle((candidates[0] || 'Key finding').split(/[,.—]/)[0], 40);
+}
+
 export function shortInsightTitle(text: string, max = 60): string {
   const clean = text.replace(/\s+/g, ' ').trim().replace(/^["']|["']$/g, '');
   const clause = clean.split(/\s+[—–-]\s+|:\s+/)[0] || clean;
@@ -473,19 +485,19 @@ export function rewriteUnverifiedCopy(spec: DashboardSpec, datasets: DashboardDa
       if (widget.type !== 'insight') {
         return { ...widget, title, subtitle };
       }
+      const sourceTitle = editorialInsightTitle(widget.insight?.title || widget.title, clean(widget.insight?.text) || fallbackBody, sentences);
       const text = clean(widget.insight?.text) || fallbackBody;
-      const extra = sentences.filter((s) => normalizePhrase(s) !== normalizePhrase(text)).slice(0, 2);
-      const body = extra.length && normalizePhrase(text) === normalizePhrase(widget.insight?.title || widget.title || '')
-        ? extra.join(' ')
-        : [text, extra[0]].filter((s, i, arr) => s && arr.findIndex((x) => normalizePhrase(x) === normalizePhrase(s)) === i).join(' ');
-      const rawTitle = widget.insight?.title || widget.title;
-      const insightTitle = shortInsightTitle(claimHolds(rawTitle || '', board) ? (rawTitle || body) : body);
-      const finalTitle = normalizePhrase(insightTitle) === normalizePhrase(body) ? undefined : insightTitle;
+      const extras = sentences.filter((s) => normalizePhrase(s) !== normalizePhrase(text) && normalizePhrase(s) !== normalizePhrase(sourceTitle || '')).slice(0, 2);
+      const body = [text, extras[0]].filter((s, i, arr) => s && arr.findIndex((x) => normalizePhrase(x) === normalizePhrase(s)) === i).join(' ');
+      const insightTitle = shortInsightTitle(claimHolds(sourceTitle || '', board) ? (sourceTitle || sentences[0] || 'Key finding') : (sentences[0] || 'Key finding'), 48);
+      const finalTitle = normalizePhrase(insightTitle) === normalizePhrase(body) || body.toLowerCase().includes(insightTitle.toLowerCase())
+        ? undefined
+        : insightTitle;
       return {
         ...widget,
         title: finalTitle || insightTitle,
         subtitle: undefined,
-        insight: { ...widget.insight, text: neverMidWord(body), title: finalTitle },
+        insight: { ...widget.insight, text: neverMidWord(body, 280), title: finalTitle },
       };
     }),
   };

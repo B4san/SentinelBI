@@ -204,7 +204,7 @@ export function analyzeDataset(dataset: DashboardDataset): Finding[] {
 
   const fields = classifyFields(dataset);
   const findings: Finding[] = [];
-  const measure = fields.measures[0];
+  const measure = fields.measures.find((name) => /rev|session|ebitda/i.test(name)) || fields.measures[0];
   const format = metricFormat(measure);
 
   if (measure && fields.dimensions[0]) {
@@ -218,7 +218,7 @@ export function analyzeDataset(dataset: DashboardDataset): Finding[] {
         kind: 'top',
         tone: 'positive',
         title: `${prettyValue(top.key)} leads ${metric}`,
-        text: `${prettyValue(top.key)} generated ${formatMetric(top.value, format)} in ${metric}, ${(top.share * 100).toFixed(0)}% of the total. It is the strongest ${dim}.`,
+        text: `${prettyValue(top.key)} generated ${formatMetric(top.value, format)} in ${metric}, ${(top.share * 100).toFixed(0)}% of the total.`,
       });
       if (bottom.value < top.value * 0.55) {
         findings.push({
@@ -247,12 +247,14 @@ export function analyzeDataset(dataset: DashboardDataset): Finding[] {
     const change = periodChange(rows, fields.time[0], measure);
     if (change) {
       const up = change.deltaPct >= 0;
-      findings.push({
+      const trend: Finding = {
         kind: 'trend',
         tone: up ? 'positive' : 'warning',
         title: up ? `${prettyField(measure)} accelerated` : `${prettyField(measure)} cooled`,
         text: `${prettyField(measure)} ${up ? 'rose' : 'fell'} ${Math.abs(change.deltaPct).toFixed(0)}% in the second half of the window versus the first (${formatMetric(change.first, format)} → ${formatMetric(change.second, format)}).`,
-      });
+      };
+      if (Math.abs(change.deltaPct) >= 8) findings.unshift(trend);
+      else findings.push(trend);
     }
   }
 

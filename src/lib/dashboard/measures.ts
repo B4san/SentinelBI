@@ -45,7 +45,7 @@ export function proposeDerivedMeasures(dataset: DashboardDataset): DerivedCandid
   const headcount = hasField(names, 'headcount') || hasField(names, 'fte');
   const opex = hasField(names, 'opex');
   const budget = hasField(names, 'budget');
-  const units = hasField(names, 'unit');
+  const units = names.find((name) => /(^|_)units?$/.test(name.toLowerCase()) || /^(units?|qty|quantity)$/i.test(name));
   const discount = hasField(names, 'discount');
   const gmField = hasField(names, 'gross', 'margin');
 
@@ -134,7 +134,7 @@ export function proposeDerivedMeasures(dataset: DashboardDataset): DerivedCandid
       measure: { kind: 'difference', numerator: { field: opex, agg: 'sum' }, denominator: { field: budget, agg: 'sum' }, format: 'currency' },
     });
   }
-  if (revenue) {
+  if (revenue && (units || /order/.test(names.join(' ')))) {
     out.push({
       id: 'aov',
       title: 'AOV',
