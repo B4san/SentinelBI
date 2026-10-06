@@ -7,7 +7,7 @@ import {
   type ResponseFormatStep,
 } from '../ai/openaiCompatible';
 import { geminiGenerate } from '../ai/geminiAdapter';
-import { PROVIDERS, isOpenRouterFreeRouter } from '../ai/providers';
+import { PROVIDERS, isNonGenerativeModel, isOpenRouterFreeRouter } from '../ai/providers';
 import { resolveProviderConfig } from '../ai/resolve';
 import type { EnvLike } from '../ai/resolve';
 import { AIProviderError } from '../ai/types';
@@ -192,7 +192,19 @@ export async function generateDashboardOnServer(
           reasoning: { effort: 'low' },
         });
         if (generated.model) routedModel = generated.model;
-        const parsed = extractJsonObject(generated.text);
+        if (isNonGenerativeModel(generated.model || routedModel)) {
+          lastError = `Non-generative model ${generated.model || routedModel} under ${step}.`;
+          logRawModelOutput(step, generated.model || routedModel, generated.text, lastError);
+          attempts.push({ step, status: 200, ms: Date.now() - t0, error: lastError, model: generated.model || routedModel });
+          continue;
+        }
+        let parsed: unknown;
+        try {
+          parsed = extractJsonObject(generated.text);
+        } catch (parseError) {
+          logRawModelOutput(step, generated.model || routedModel, generated.text, 'invalid JSON');
+          throw parseError;
+        }
         const spec = validateDashboardSpec(parsed, {
           seed,
           archetype,
@@ -204,6 +216,7 @@ export async function generateDashboardOnServer(
         if (spec.widgets.length === 0) {
           lastError = `Model returned 0 widgets under ${step}.`;
           attempts[attempts.length - 1].error = lastError;
+          logRawModelOutput(step, generated.model || routedModel, generated.text, lastError);
           continue;
         }
         return {
@@ -244,6 +257,11 @@ export async function generateDashboardOnServer(
   }
 }
 
+function logRawModelOutput(step: string, model: string | undefined, text: string, reason: string) {
+  const raw = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 1500);
+  console.warn(`[generate] ${reason} step=${step} model=${model || '?'} chars=${String(text || '').length} raw=${raw}`);
+}
+
 function parseOrFallback(
   text: string,
   ctx: GenerateServerContext,
@@ -263,6 +281,7 @@ function parseOrFallback(
     });
     if (spec.widgets.length === 0) {
       const reason = `${label}: 0 widgets.`;
+      logRawModelOutput(label, undefined, text, reason);
       return {
         spec: lockUserTitle(withUniqueId(fallbackSpec({ ...ctx, seed, archetype })), ctx.title),
         source: 'fallback',

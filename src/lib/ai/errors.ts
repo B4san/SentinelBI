@@ -1,3 +1,4 @@
+import { isDailyFreeQuotaError } from './providers';
 import { AIProviderError } from './types';
 
 export function mapProviderError(opts: {
@@ -27,12 +28,15 @@ export function mapProviderError(opts: {
     });
   }
   if (status === 429) {
+    const daily = isDailyFreeQuotaError(raw);
     return new AIProviderError({
-      message: `${provider} rate-limited the request (429). Wait and retry.`,
+      message: daily
+        ? `${provider} free quota is exhausted. It resets daily.`
+        : `${provider} rate-limited the request (429). Wait and retry.`,
       status,
       code: 'rate_limit',
       provider,
-      retryable: true,
+      retryable: !daily,
     });
   }
   if (status >= 500) {

@@ -1,0 +1,366 @@
+{
+  "title": "Atlas Growth Analytics",
+  "intent": "Power BI grade, even more amazing than Power BI: web acquisition and conversion. Which channels and devices convert, where bounce wastes paid spend, ROAS and conversion rate by channel, and the weekly trend.",
+  "archetype": "command-center",
+  "generatedBy": "nvidia/nemotron-3-super-120b-a12b:free",
+  "narrative": {
+    "headline": "Atlas Growth Analytics",
+    "body": "Analyze web acquisition and conversion performance across channels and devices."
+  },
+  "theme": {
+    "palette": {
+      "id": "sunset",
+      "label": "Ocean",
+      "mode": "light",
+      "background": "transparent",
+      "surface": "#ffffff",
+      "text": "#212529",
+      "muted": "#6c757d",
+      "accent": "#ff6b6b",
+      "accentSoft": "#ff9e80",
+      "border": "#dee2e6",
+      "chart": [
+        "#2563eb",
+        "#0ea5e9",
+        "#14b8a6",
+        "#7c3aed",
+        "#f59e0b",
+        "#ef4444"
+      ]
+    },
+    "fontFamily": "font-sans",
+    "headingFont": "font-grotesk",
+    "radius": "rounded-2xl",
+    "density": "comfortable"
+  },
+  "widgets": [
+    {
+      "id": "widget-hero-trend",
+      "type": "chart",
+      "title": "Revenue trend",
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 7
+      },
+      "chartType": "area",
+      "datasetId": "ds-web",
+      "xField": "date",
+      "yField": "revenue",
+      "componentId": "arc.brush-chart",
+      "compare": "previous-period",
+      "polarity": "higher-is-better",
+      "role": "hero",
+      "color": "#2563eb",
+      "aggregation": "sum"
+    },
+    {
+      "id": "widget-kpi-roas",
+      "type": "kpi",
+      "title": "ROAS",
+      "layout": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 2
+      },
+      "componentId": "arc.metric-card",
+      "measure": {
+        "kind": "ratio",
+        "numerator": {
+          "field": "revenue",
+          "agg": "sum"
+        },
+        "denominator": {
+          "field": "ad_spend",
+          "agg": "sum"
+        },
+        "format": "number"
+      },
+      "polarity": "higher-is-better",
+      "color": "#0ea5e9",
+      "aggregation": "sum",
+      "kpi": {
+        "value": "37.7",
+        "trend": "-8.1% vs first half",
+        "polarity": "higher-is-better",
+        "delta": -8.122928196260965,
+        "sparkline": [
+          39.86072917590703,
+          41.181256159842306,
+          39.01338688085676,
+          37.80427486309839,
+          40.96026986506747,
+          38.59626345788474,
+          38.09024933534526,
+          28.85873214403265
+        ],
+        "format": "number"
+      }
+    },
+    {
+      "id": "widget-kpi-conv-rate",
+      "type": "kpi",
+      "title": "Conversion rate",
+      "layout": {
+        "x": 8,
+        "y": 2,
+        "w": 4,
+        "h": 2
+      },
+      "componentId": "arc.metric-card",
+      "measure": {
+        "kind": "ratio",
+        "numerator": {
+          "field": "conversions",
+          "agg": "sum"
+        },
+        "denominator": {
+          "field": "sessions",
+          "agg": "sum"
+        },
+        "format": "percent"
+      },
+      "polarity": "higher-is-better",
+      "color": "#14b8a6",
+      "aggregation": "sum",
+      "kpi": {
+        "value": "3.0%",
+        "trend": "flat vs first half",
+        "polarity": "higher-is-better",
+        "delta": 0.0141786092563604,
+        "sparkline": [
+          0.030229343076505294,
+          0.029686207609594707,
+          0.028414022567267817,
+          0.03029954358915353,
+          0.03028483679902091,
+          0.030442758689077296,
+          0.03016936411072787,
+          0.02827523380112778
+        ],
+        "format": "percent"
+      }
+    },
+    {
+      "id": "widget-kpi-bounce",
+      "type": "kpi",
+      "title": "Bounce rate",
+      "layout": {
+        "x": 8,
+        "y": 4,
+        "w": 4,
+        "h": 2
+      },
+      "yField": "bounce_rate",
+      "componentId": "arc.metric-card",
+      "measure": {
+        "kind": "weighted",
+        "numerator": {
+          "field": "bounce_rate",
+          "agg": "avg"
+        },
+        "denominator": {
+          "field": "sessions",
+          "agg": "sum"
+        },
+        "format": "percent"
+      },
+      "polarity": "lower-is-better",
+      "color": "#7c3aed",
+      "aggregation": "avg",
+      "kpi": {
+        "value": "45.9%",
+        "trend": "-0.5 pp vs first half",
+        "polarity": "lower-is-better",
+        "delta": -0.5192268669066136,
+        "sparkline": [
+          0.4589872984916187,
+          0.46936118434656754,
+          0.453612209470537,
+          0.46572059218348494,
+          0.44738664834720765,
+          0.45061137141157215,
+          0.4537840718139207,
+          0.4741504629896564
+        ],
+        "format": "percent",
+        "field": "bounce_rate"
+      }
+    },
+    {
+      "id": "widget-kpi-revenue",
+      "type": "kpi",
+      "title": "Revenue",
+      "layout": {
+        "x": 8,
+        "y": 6,
+        "w": 4,
+        "h": 2
+      },
+      "yField": "revenue",
+      "componentId": "arc.metric-card",
+      "measure": {
+        "kind": "simple",
+        "field": "revenue",
+        "agg": "sum",
+        "format": "currency"
+      },
+      "polarity": "higher-is-better",
+      "color": "#f59e0b",
+      "aggregation": "sum",
+      "kpi": {
+        "value": "$3.8M",
+        "trend": "+6.3% vs first half",
+        "polarity": "higher-is-better",
+        "delta": 6.296956219217703,
+        "sparkline": [
+          261574,
+          296351,
+          312670,
+          302301,
+          315670,
+          301003,
+          333956,
+          305712,
+          336803,
+          343695,
+          325412,
+          307259
+        ],
+        "format": "currency",
+        "field": "revenue"
+      }
+    },
+    {
+      "id": "widget-donut-channel",
+      "type": "chart",
+      "title": "Sessions by channel",
+      "layout": {
+        "x": 0,
+        "y": 7,
+        "w": 6,
+        "h": 4
+      },
+      "chartType": "donut",
+      "datasetId": "ds-web",
+      "xField": "channel",
+      "yField": "sessions",
+      "componentId": "arc.donut-chart",
+      "table": {
+        "sort": {
+          "field": "channel",
+          "dir": "desc"
+        },
+        "groupBy": [
+          "channel"
+        ]
+      },
+      "polarity": "higher-is-better",
+      "color": "#ef4444",
+      "aggregation": "sum"
+    },
+    {
+      "id": "widget-bar-device-conv",
+      "type": "chart",
+      "title": "Conversion rate by device",
+      "layout": {
+        "x": 6,
+        "y": 7,
+        "w": 6,
+        "h": 4
+      },
+      "chartType": "bar",
+      "datasetId": "ds-web",
+      "xField": "device",
+      "componentId": "arc.bar-chart",
+      "measure": {
+        "kind": "ratio",
+        "numerator": {
+          "field": "conversions",
+          "agg": "sum"
+        },
+        "denominator": {
+          "field": "sessions",
+          "agg": "sum"
+        },
+        "format": "percent"
+      },
+      "table": {
+        "sort": {
+          "field": "device",
+          "dir": "desc"
+        },
+        "groupBy": [
+          "device"
+        ]
+      },
+      "polarity": "higher-is-better",
+      "color": "#2563eb",
+      "aggregation": "sum"
+    },
+    {
+      "id": "widget-table-detail",
+      "type": "table",
+      "title": "Top channel × device performance",
+      "layout": {
+        "x": 0,
+        "y": 11,
+        "w": 12,
+        "h": 6
+      },
+      "datasetId": "ds-web",
+      "componentId": "arc.sortable-data-table",
+      "table": {
+        "sort": {
+          "field": "revenue",
+          "dir": "desc"
+        },
+        "limit": 12,
+        "groupBy": [
+          "channel",
+          "device"
+        ],
+        "measures": [
+          {
+            "field": "sessions",
+            "agg": "sum"
+          },
+          {
+            "field": "conversions",
+            "agg": "sum"
+          },
+          {
+            "field": "revenue",
+            "agg": "sum",
+            "format": "currency"
+          }
+        ]
+      },
+      "polarity": "higher-is-better",
+      "color": "#14b8a6",
+      "aggregation": "sum"
+    },
+    {
+      "id": "widget-insight",
+      "type": "insight",
+      "title": "Paid leads channel at 214.6K, 32% of the total",
+      "layout": {
+        "x": 0,
+        "y": 17,
+        "w": 12,
+        "h": 2
+      },
+      "polarity": "higher-is-better",
+      "role": "strip",
+      "color": "#7c3aed",
+      "aggregation": "sum",
+      "insight": {
+        "title": "Paid leads channel at 214.6K, 32% of the total",
+        "text": "Server will replace this with a computed fact. Direct is the smallest channel at 10% share.",
+        "tone": "neutral"
+      }
+    }
+  ]
+}

@@ -4,7 +4,7 @@ import { CHART_TYPES } from '../../lib/dashboard/types';
 import { classifyFields, prettyField } from '../../lib/dashboard/insights';
 import { parseLocalDate } from '../../lib/dashboard/dates';
 import { applyLiveCopy } from '../../lib/dashboard/facts';
-import { prepareTableModel } from '../../lib/dashboard/table';
+import { packDashboardLayout, suggestedTableSpan } from '../../lib/dashboard/layout';
 import { harmonizePalette } from '../../lib/dashboard/palettes';
 import { DateRangePicker, type DateRangeValue } from '../arc/date-range-picker/date-range-picker';
 import { WidgetCard } from './WidgetCard';
@@ -75,17 +75,25 @@ export function DashboardCanvas({
   }, [filters, slicer, slicerField, range, timeField]);
 
   const specWithCompare = useMemo(() => {
-    const next = {
+    const compared = {
       ...themedSpec,
-      widgets: themedSpec.widgets.map((widget) => (
-        compare !== 'none' && widget.type === 'chart'
-          ? { ...widget, compare }
-          : widget
-      )),
+      widgets: themedSpec.widgets.map((widget) => {
+        if (widget.type !== 'chart' && widget.type !== 'kpi' && widget.type !== 'table') return widget;
+        return { ...widget, compare: compare === 'none' ? undefined : compare };
+      }),
       filters: extraFilters,
     };
-    return applyLiveCopy(next, datasets, extraFilters);
-  }, [themedSpec, compare, extraFilters, datasets]);
+    const copied = applyLiveCopy(compared, datasets, extraFilters);
+    const sized = {
+      ...copied,
+      widgets: copied.widgets.map((widget) => (
+        widget.type === 'table'
+          ? { ...widget, layout: { ...widget.layout, h: suggestedTableSpan(widget, datasets, extraFilters, rowHeight, gap) } }
+          : widget
+      )),
+    };
+    return packDashboardLayout(sized, datasets);
+  }, [themedSpec, compare, extraFilters, datasets, rowHeight, gap]);
 
   const addFilter = (field: string, value: string) => {
     setFilters((current) => {
@@ -111,9 +119,9 @@ export function DashboardCanvas({
         <h2 className={`${spec.theme.headingFont || spec.theme.fontFamily} text-[28px] font-semibold tracking-tight`}>
           {spec.title}
         </h2>
-        {(specWithCompare.narrative?.headline || specWithCompare.subtitle) && (
+        {(specWithCompare.subtitle || (specWithCompare.narrative?.headline && specWithCompare.narrative.headline !== spec.title)) && (
           <p className="mt-1.5 text-[15px] leading-relaxed max-w-4xl" style={{ color: palette.muted }}>
-            {specWithCompare.narrative?.headline || specWithCompare.subtitle}
+            {specWithCompare.subtitle || specWithCompare.narrative?.headline}
           </p>
         )}
       </header>
@@ -213,13 +221,10 @@ export function DashboardCanvas({
         }}
       >
         {specWithCompare.widgets.map((widget) => {
-          const liveWidget = widget.type === 'table'
-            ? { ...widget, layout: { ...widget.layout, h: tableSpan(widget, datasets, extraFilters, rowHeight, gap) } }
-            : widget;
           return (
           <GridItem
             key={widget.id}
-            widget={liveWidget}
+            widget={widget}
             gap={gap}
             rowHeight={rowHeight}
             editing={editing}
@@ -234,7 +239,7 @@ export function DashboardCanvas({
           >
             <WidgetCard
               spec={specWithCompare}
-              widget={liveWidget}
+              widget={widget}
               datasets={datasets}
               filters={filtersForWidget(widget, extraFilters, highlight)}
               highlight={highlight && highlight.field === widget.xField ? highlight.value : undefined}
@@ -255,19 +260,6 @@ export function DashboardCanvas({
       )}
     </div>
   );
-}
-
-function tableSpan(
-  widget: DashboardWidget,
-  datasets: DashboardDataset[],
-  extra: WidgetFilter[],
-  rowHeight: number,
-  gap: number,
-): number {
-  const model = prepareTableModel(datasets, widget, extra);
-  const px = 56 + Math.max(1, model.rows.length) * 30;
-  const unit = rowHeight + gap;
-  return Math.max(3, Math.min(widget.layout.h, Math.ceil(px / unit)));
 }
 
 function filtersForWidget(widget: DashboardWidget, extra: WidgetFilter[], highlight?: { field: string; value: string } | null): WidgetFilter[] {
@@ -304,13 +296,13 @@ function GridItem({
     gridColumn: `${x + 1} / span ${Math.max(1, w)}`,
     gridRow: `${y + 1} / span ${Math.max(1, h)}`,
     minWidth: 0,
-    height: widget.type === 'section' || isTable ? 'auto' : cellHeight,
-    minHeight: widget.type === 'section' ? 36 : isTable ? 120 : cellHeight,
-    maxHeight: isTable ? cellHeight : undefined,
+    height: widget.type === 'section' ? 'auto' : cellHeight,
+    minHeight: widget.type === 'section' ? 36 : isTable ? cellHeight : cellHeight,
+    maxHeight: undefined,
     alignSelf: isTable ? 'start' : undefined,
     zIndex: widget.type === 'section' ? 2 : selected ? 4 : 1,
     position: 'relative' as const,
-    overflow: widget.type === 'section' ? 'visible' : 'hidden',
+    overflow: widget.type === 'section' ? 'visible' : isTable ? 'visible' : 'hidden',
     ['--dash-cell-h' as string]: `${cellHeight}px`,
   };
 

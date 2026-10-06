@@ -39,6 +39,7 @@ test('hydrated /d page styles, slicer, cross-filter, and compare', async ({ page
   }
 
   await page.getByRole('button', { name: /Compare period|Vs previous|Vs last year/ }).click();
+  await expect(page.locator('.dash-plot polyline[data-compare="1"], .dash-plot polyline[stroke-dasharray]').first()).toBeVisible();
   const after = await firstKpi.textContent();
   expect(before).toBeTruthy();
   expect(after).toBeTruthy();

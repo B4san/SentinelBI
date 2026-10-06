@@ -180,3 +180,11 @@ export function isOpenRouterFreeRouter(model?: string): boolean {
   const id = String(model || '').trim().toLowerCase();
   return id === 'openrouter/free' || id === 'openrouter/auto' || id.endsWith('/free:router');
 }
+
+export function isNonGenerativeModel(model?: string): boolean {
+  return /content-safety|moderation|embedding|whisper|tts\b|rerank|classifier|safety/i.test(model || '');
+}
+
+export function isDailyFreeQuotaError(text?: string): boolean {
+  return /free-models-per-day|free models per day/i.test(text || '');
+}

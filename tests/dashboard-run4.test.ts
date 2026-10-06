@@ -114,7 +114,8 @@ describe('computed facts override the model', () => {
     const computed = attachComputedFacts(spec, [sales]);
     const verified = rewriteUnverifiedCopy(computed, [sales]);
     expect(verified.subtitle).toBeUndefined();
-    expect(verified.narrative?.headline).toBe('Sales');
+    expect(verified.narrative?.headline).toBeFalsy();
+    expect(verified.narrative?.headline).not.toBe(verified.title);
     expect(verified.widgets.find((w) => w.type === 'insight')?.insight?.text).not.toMatch(/12%/);
   });
 

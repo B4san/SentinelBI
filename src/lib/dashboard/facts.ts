@@ -94,7 +94,7 @@ export function computeWidgetKpi(
       raw,
       value: formatDerived(raw, format),
       delta,
-      trend: pretty ? `${pretty.label} vs first half` : undefined,
+      trend: pretty ? `${pretty.label} ${compareTrendLabel(snapped.compare)}` : undefined,
       sparkline,
       format,
       polarity,
@@ -129,11 +129,21 @@ export function computeWidgetKpi(
     raw,
     value,
     delta: change?.deltaPct,
-    trend: pretty ? `${pretty.label} vs first half` : undefined,
+    trend: pretty ? `${pretty.label} ${compareTrendLabel(snapped.compare)}` : undefined,
     sparkline,
     format,
     polarity,
   };
+}
+
+function compareTrendLabel(compare?: DashboardWidget['compare']): string {
+  if (compare === 'previous-year' || compare === 'prior-year') return 'vs last year';
+  if (compare === 'previous-period' || compare === 'prior-period') return 'vs previous period';
+  return 'vs first half';
+}
+
+function isPlaceholderCopy(text?: string): boolean {
+  return /server will replace this with a computed fact/i.test(text || '');
 }
 
 function rateAwareChange(
@@ -465,13 +475,15 @@ export function rewriteUnverifiedCopy(spec: DashboardSpec, datasets: DashboardDa
   const sentences = board.sentences;
   const clean = (text?: string) => {
     if (!text) return text;
-    if (claimHolds(text, board)) return neverMidWord(text);
-    return undefined;
+    if (isPlaceholderCopy(text) || !claimHolds(text, board)) return undefined;
+    return neverMidWord(text);
   };
   const fallbackBody = neverMidWord(sentences.slice(0, 2).join(' ') || (facts[0] ? `${spec.title} is ${facts[0]}.` : 'No verified finding for this slice.'));
+  const rawHeadline = spec.narrative ? clean(spec.narrative.headline) : undefined;
+  const headline = rawHeadline && normalizePhrase(rawHeadline) !== normalizePhrase(spec.title) ? rawHeadline : undefined;
   const narrative = spec.narrative
     ? {
-        headline: clean(spec.narrative.headline) || spec.title,
+        headline,
         body: clean(spec.narrative.body) || fallbackBody,
       }
     : spec.narrative;
@@ -524,6 +536,9 @@ export function dedupeHeadlines(spec: DashboardSpec): DashboardSpec {
   const subtitle = spec.subtitle?.trim();
   const insightTitle = insight?.insight?.title?.trim() || insight?.title?.trim();
   const next = { ...spec };
+  if (headline && spec.title && normalizePhrase(headline) === normalizePhrase(spec.title)) {
+    next.narrative = spec.narrative ? { ...spec.narrative, headline: undefined } : spec.narrative;
+  }
   if (headline && subtitle && normalizePhrase(headline) === normalizePhrase(subtitle)) {
     next.subtitle = undefined;
   }
@@ -563,7 +578,7 @@ export function applyLiveCopy(
   datasets: DashboardDataset[],
   filters: WidgetFilter[] = [],
 ): DashboardSpec {
-  if (!filters.length) return spec;
+  if (!filters.length) return dedupeHeadlines(rewriteUnverifiedCopy(spec, datasets));
   const filtered = datasets.map((dataset) => {
     let rows = dataset.data || [];
     for (const filter of filters) rows = applyFilter(rows, filter);

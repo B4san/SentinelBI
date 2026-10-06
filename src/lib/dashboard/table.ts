@@ -1,8 +1,9 @@
 import { applyFilter, resolveDataset } from './aggregate';
 import { aggregateNumber, formatMetric } from './format';
 import { metricFormat } from './insights';
-import { inferAggregation, looksLikeDuration } from './measures';
-import type { DashboardDataset, DashboardWidget, WidgetFilter } from './types';
+import { computeDerivedValue, inferAggregation, looksLikeDuration, proposeDerivedMeasures } from './measures';
+import { isDerivedMeasure } from './ids';
+import type { DashboardDataset, DashboardWidget, DerivedMeasure, WidgetFilter } from './types';
 
 export interface TableCell { field: string; value: string | number; raw: unknown }
 export interface TableModel {
@@ -37,25 +38,19 @@ export function prepareTableModel(
     const measureList = measures.length
       ? measures
       : (widget.columns || []).filter((c) => names.has(c) && !groupBy.includes(c)).map((field) => ({ field, agg: inferAggregation(field) }));
-    const map = new Map<string, { keys: Record<string, string>; values: Record<string, number[]> }>();
+    const map = new Map<string, { keys: Record<string, string>; rows: Record<string, unknown>[] }>();
     for (const row of rows) {
       const keys: Record<string, string> = {};
       for (const field of groupBy) keys[field] = String(row[field] ?? '');
       const id = groupBy.map((f) => keys[f]).join('|');
-      const bucket = map.get(id) || { keys, values: {} };
-      for (const measure of measureList) {
-        const n = Number(row[measure.field]);
-        if (!Number.isNaN(n)) {
-          bucket.values[measure.field] = bucket.values[measure.field] || [];
-          bucket.values[measure.field].push(n);
-        }
-      }
+      const bucket = map.get(id) || { keys, rows: [] };
+      bucket.rows.push(row);
       map.set(id, bucket);
     }
     let out = Array.from(map.values()).map((bucket) => {
       const rec: Record<string, string | number> = { ...bucket.keys };
       for (const measure of measureList) {
-        rec[measure.field] = aggregateNumber(bucket.values[measure.field] || [], measure.agg || inferAggregation(measure.field));
+        rec[measure.field] = groupMeasureValue(bucket.rows, measure.field, measure.agg || inferAggregation(measure.field), dataset);
       }
       return rec;
     });
@@ -68,8 +63,7 @@ export function prepareTableModel(
     const limited = out.slice(0, query?.limit || 12);
     const totals: Record<string, string | number> = { [groupBy[0]]: 'Total' };
     for (const measure of measureList) {
-      const agg = measure.agg || inferAggregation(measure.field);
-      totals[measure.field] = aggregateNumber(limited.map((row) => Number(row[measure.field]) || 0), agg === 'avg' ? 'avg' : 'sum');
+      totals[measure.field] = groupMeasureValue(rows, measure.field, measure.agg || inferAggregation(measure.field), dataset);
     }
     return {
       columns,
@@ -111,6 +105,28 @@ export function prepareTableModel(
   };
 }
 
+function derivedForField(dataset: DashboardDataset | undefined, field: string): DerivedMeasure | undefined {
+  if (!dataset) return undefined;
+  const match = proposeDerivedMeasures(dataset).find((item) => (
+    item.measure
+    && isDerivedMeasure(item.measure)
+    && item.measure.numerator.field === field
+    && (item.measure.kind === 'weighted' || item.measure.kind === 'ratio' || item.measure.kind === 'margin')
+  ));
+  return match?.measure;
+}
+
+function groupMeasureValue(
+  slice: Record<string, unknown>[],
+  field: string,
+  agg: ReturnType<typeof inferAggregation>,
+  dataset?: DashboardDataset,
+): number {
+  const derived = derivedForField(dataset, field);
+  if (derived) return computeDerivedValue(slice, derived);
+  const nums = slice.map((row) => Number(row[field])).filter((n) => !Number.isNaN(n));
+  return aggregateNumber(nums, agg || inferAggregation(field));
+}
 function resolveColumn(field: string | undefined, names: Set<string>): string | undefined {
   if (!field) return undefined;
   if (names.has(field)) return field;

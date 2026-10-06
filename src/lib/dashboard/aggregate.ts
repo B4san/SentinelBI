@@ -62,7 +62,7 @@ export function prepareChartSeries(
   datasets: DashboardDataset[],
   widget: DashboardWidget,
   extraFilters: WidgetFilter[] = [],
-): Array<Record<string, string | number>> {
+): Array<Record<string, string | number | null>> {
   const dataset = resolveDataset(datasets, widget.datasetId);
   if (!dataset) return [];
 
@@ -123,7 +123,7 @@ export function prepareChartSeries(
       const slice = grouped.get(key) || [];
       const date = parseLocalDate(key);
       const label = date ? bucketTimeSeries(slice, xField, derived?.numerator.field || measureFields[0] || valueKey, 'sum', grain, { keepPartial: true })[0]?.label || key : key;
-      const rec: Record<string, string | number> = { [xField]: key, name: label, label };
+      const rec: Record<string, string | number | null> = { [xField]: key, name: label, label };
       if (derived) {
         const value = computeDerivedValue(slice, derived, xField);
         rec.value = value;
@@ -160,7 +160,7 @@ export function prepareChartSeries(
   }
 
   const series = Array.from(groups.entries()).map(([name, slice]) => {
-    const rec: Record<string, string | number> = { [xField]: name, name };
+    const rec: Record<string, string | number | null> = { [xField]: name, name };
     if (derived) {
       const value = computeDerivedValue(slice, derived, undefined);
       rec.value = value;
@@ -205,12 +205,12 @@ export function prepareChartSeries(
 }
 
 function applyShareOrSlope(
-  series: Array<Record<string, string | number>>,
+  series: Array<Record<string, string | number | null>>,
   widget: DashboardWidget,
   rows: Record<string, unknown>[],
   xField: string,
   valueKey: string,
-): Array<Record<string, string | number>> {
+): Array<Record<string, string | number | null>> {
   const title = `${widget.title} ${widget.subtitle || ''} ${widget.componentId || ''}`;
   const wantsShare = /share|% of total/i.test(title) || widget.componentId === 'arc.waffle-chart';
   const wantsSlope = /change|growth driver|slope/i.test(title) || widget.componentId === 'arc.slope-chart';
@@ -238,18 +238,18 @@ function applyShareOrSlope(
 }
 
 function alignCompare(
-  current: Array<Record<string, string | number>>,
-  shifted: number[],
-): { rows: Array<Record<string, string | number>>; usedFallback: boolean } {
-  const empty = shifted.every((v) => !v);
+  current: Array<Record<string, string | number | null>>,
+  shifted: Array<number | null>,
+): { rows: Array<Record<string, string | number | null>>; usedFallback: boolean } {
+  const empty = shifted.every((v) => v == null);
   if (!empty) {
-    return { rows: current.map((row, i) => ({ ...row, __compare: shifted[i] ?? 0 })), usedFallback: false };
+    return { rows: current.map((row, i) => ({ ...row, __compare: shifted[i] ?? null })), usedFallback: false };
   }
   const half = Math.floor(current.length / 2);
   return {
     rows: current.map((row, i) => ({
       ...row,
-      __compare: i >= half ? Number(current[i - half]?.value ?? 0) : 0,
+      __compare: i >= half ? Number(current[i - half]?.value ?? 0) : null,
       __compareLabel: 'H1 vs H2',
     })),
     usedFallback: true,
@@ -263,25 +263,30 @@ function previousPeriodSeries(
   aggregation: ReturnType<typeof inferAggregation>,
   compare: 'previous-period' | 'previous-year',
   derived?: ReturnType<typeof isDerivedMeasure> extends true ? import('./types').DerivedMeasure : import('./types').DerivedMeasure | undefined,
-): number[] {
-  const grain = bucketTimeSeries(rows, timeField, yField, aggregation);
-  if (compare === 'previous-year') {
-    const yearly = grain.map((item, i) => grain[i - 12]?.value ?? 0);
-    if (yearly.some((v) => v)) return yearly;
+): Array<number | null> {
+  const grain = autoTimeGrain(rows.map((row) => row[timeField]));
+  const grouped = new Map<string, Record<string, unknown>[]>();
+  for (const row of rows) {
+    const key = grainKey(row[timeField], grain);
+    if (!key) continue;
+    const bucket = grouped.get(key) || [];
+    bucket.push(row);
+    grouped.set(key, bucket);
   }
-  const half = Math.floor(grain.length / 2);
-  const shifted = grain.map((_, i) => grain[i - half]?.value ?? 0);
-  if (shifted.some((v) => v)) return shifted;
-  if (derived) {
-    const dated = rows
-      .map((row) => ({ t: parseLocalDate(row[timeField])?.getTime() ?? NaN, row }))
-      .filter((row) => !Number.isNaN(row.t))
-      .sort((a, b) => a.t - b.t);
-    const mid = Math.floor(dated.length / 2);
-    const first = dated.slice(0, mid).map((r) => r.row);
-    return grain.map(() => computeDerivedValue(first, derived, timeField));
-  }
-  return shifted;
+  const keys = [...grouped.keys()].sort();
+  const values = keys.map((key) => {
+    const slice = grouped.get(key) || [];
+    if (derived) return computeDerivedValue(slice, derived, timeField);
+    const nums = slice.map((row) => Number(row[yField])).filter((n) => !Number.isNaN(n));
+    return Number(aggregateNumber(nums, inferAggregation(yField) || aggregation).toFixed(4));
+  });
+  const offset = compare === 'previous-year'
+    ? (grain === 'month' ? 12 : grain === 'quarter' ? 4 : grain === 'week' ? 52 : 365)
+    : Math.max(1, Math.floor(values.length / 2));
+  const shifted = values.map((_, i) => (i >= offset ? values[i - offset] : null));
+  if (shifted.some((v) => v != null)) return shifted;
+  const half = Math.floor(values.length / 2);
+  return values.map((_, i) => (i >= half ? values[i - half] ?? null : null));
 }
 
 function samplePoints<T>(points: T[], limit: number): T[] {

@@ -1,4 +1,5 @@
 import { mapProviderError } from './errors';
+import { isDailyFreeQuotaError } from './providers';
 import type { ModelInfo, ResolvedProviderConfig } from './types';
 
 export const GENERATE_TIMEOUT_MS = 240_000;
@@ -240,6 +241,9 @@ export async function openaiGenerate(
 
     if (result.status === 429) {
       lastError = chatPayloadError(result.payload) || result.raw || '429 rate limited';
+      if (isDailyFreeQuotaError(lastError)) {
+        throw mapProviderError({ status: 429, body: lastError, provider: config.provider });
+      }
       if (!waitedOn429) {
         waitedOn429 = true;
         const budget = Math.max(0, (opts.timeoutMs ?? GENERATE_TIMEOUT_MS) - 250);

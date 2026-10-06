@@ -32,5 +32,8 @@ export function formatMetric(value: number, format?: MeasureFormat): string {
   }
   if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  if (!Number.isInteger(value) && Math.abs(value) < 1) {
+    return value.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 1 });
+  }
   return Number.isInteger(value) ? value.toLocaleString() : value.toLocaleString(undefined, { maximumFractionDigits: 1 });
 }

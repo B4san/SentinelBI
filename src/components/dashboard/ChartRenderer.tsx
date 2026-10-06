@@ -5,6 +5,15 @@ import { formatLocalDate } from '../../lib/dashboard/dates';
 import { metricFormat, prettyField } from '../../lib/dashboard/insights';
 import { looksLikeDuration } from '../../lib/dashboard/measures';
 
+type PlotRow = Record<string, string | number | null | undefined>;
+
+function numericField(row: PlotRow, field: string, fallback?: string): number | null {
+  const raw = row[field] ?? (fallback ? row[fallback] : undefined);
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
 function usePlotSize(fallback = { w: 800, h: 320 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState(fallback);
@@ -124,7 +133,7 @@ function Cartesian({
   onPointClick,
   highlight,
 }: {
-  data: Array<Record<string, string | number>>;
+  data: Array<PlotRow>;
   type: string;
   palette: DashboardSpec['theme']['palette'];
   color: string;
@@ -146,14 +155,16 @@ function Cartesian({
   const pad = { top: 18, right: rightAxis ? 48 : 28, bottom: horizontal ? 16 : 40, left };
   const innerW = Math.max(40, width - pad.left - pad.right);
   const innerH = Math.max(40, height - pad.top - pad.bottom);
-  const numeric = data.map((d) => Number(d[yKey] ?? d.value));
+  const numeric = data.map((d) => numericField(d, yKey, 'value')).filter((n): n is number => n != null);
   const yMax = Math.max(...numeric, 0) * 1.12 || 1;
   const yMin = Math.min(0, ...numeric);
   const n = data.length;
   const step = innerW / Math.max(n, 1);
   const share = data.some((d) => d.__share != null);
   const slope = data.some((d) => d.__start != null);
-  const fmt = share ? 'percent' : looksLikeDuration(yKey) ? 'duration' : metricFormat(yKey);
+  const fmt = share
+    ? 'percent'
+    : widget.measure?.format || (looksLikeDuration(yKey) ? 'duration' : metricFormat(yKey));
   const categoricalLegend = Boolean(widget.groupField) || (seriesFields.filter((f) => f !== '__compare').length > 1 && !rightAxis);
   const barColor = (i: number, name: string) => {
     const selected = highlight && name === highlight;
@@ -165,16 +176,31 @@ function Cartesian({
   if (type === 'scatter' || type === 'bubble') {
     const xs = data.map((d) => Number(d[xKey]));
     const ys = data.map((d) => Number(d[yKey]));
-    const xMin = Math.min(...xs);
-    const xMax = Math.max(...xs);
+    const xRawMin = Math.min(...xs);
+    const xRawMax = Math.max(...xs);
+    const yRawMin = Math.min(...ys);
+    const yRawMax = Math.max(...ys);
+    const xPad = (xRawMax - xRawMin) * 0.08 || Math.abs(xRawMax) * 0.08 || 0.01;
+    const yPad = (yRawMax - yRawMin) * 0.08 || Math.abs(yRawMax) * 0.08 || 0.01;
+    const xMin = xRawMin - xPad;
+    const xMax = xRawMax + xPad;
+    const yMinS = yRawMin - yPad;
+    const yMaxS = yRawMax + yPad;
+    const xFmt = metricFormat(xKey);
+    const yFmt = widget.measure?.format || metricFormat(yKey);
+    const scatterPad = { ...pad, bottom: 48 };
+    const scatterH = Math.max(40, height - scatterPad.top - scatterPad.bottom);
     return (
       <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="100%" className="dash-plot" role="img">
-        {gridY(pad, innerW, innerH, yMin, Math.max(...ys, 1), palette, fmt)}
+        {gridY(scatterPad, innerW, scatterH, yMinS, yMaxS, palette, yFmt)}
+        {gridX(scatterPad, innerW, scatterH, height, xMin, xMax, palette, xFmt)}
         {data.map((d, i) => {
-          const x = pad.left + ((Number(d[xKey]) - xMin) / (xMax - xMin || 1)) * innerW;
-          const y = pad.top + innerH - ((Number(d[yKey]) - yMin) / (Math.max(...ys) - yMin || 1)) * innerH;
+          const x = scatterPad.left + ((Number(d[xKey]) - xMin) / (xMax - xMin || 1)) * innerW;
+          const y = scatterPad.top + scatterH - ((Number(d[yKey]) - yMinS) / (yMaxS - yMinS || 1)) * scatterH;
           return <circle key={i} cx={x} cy={y} r={3.2} fill={color} />;
         })}
+        <text x={scatterPad.left + innerW / 2} y={height - 6} textAnchor="middle" fontSize="11" fill={palette.muted}>{prettyField(xKey)}</text>
+        <text x={14} y={scatterPad.top + scatterH / 2} textAnchor="middle" fontSize="11" fill={palette.muted} transform={`rotate(-90 14 ${scatterPad.top + scatterH / 2})`}>{prettyField(yKey)}</text>
       </svg>
     );
   }
@@ -183,12 +209,14 @@ function Cartesian({
     const overlay = seriesFields.filter((f) => f !== yKey);
     const paths = (type === 'bar' ? overlay : seriesFields).map((field, s) => {
       const right = field !== yKey && field !== '__compare' && (/rate|margin|pct/i.test(field) || widget.series?.find((x) => x.field === field)?.axis === 'right');
-      const vals = data.map((d) => Number(d[field] ?? 0));
+      const vals = data.map((d) => numericField(d, field)).filter((n): n is number => n != null);
       const max = right ? Math.max(...vals, 0) * 1.12 || 1 : yMax;
       const min = right ? Math.min(0, ...vals) : yMin;
       const pts = data.map((d, i) => {
+        const raw = numericField(d, field);
+        if (raw == null) return null;
         const x = pad.left + step * i + step / 2;
-        const y = pad.top + innerH - ((Number(d[field] ?? 0) - min) / (max - min || 1)) * innerH;
+        const y = pad.top + innerH - ((raw - min) / (max - min || 1)) * innerH;
         return { x, y };
       });
       return {
@@ -202,8 +230,9 @@ function Cartesian({
     const first = paths[0];
     const areaId = `area-${widget.id}`;
     const dLine = (pts: Array<{ x: number; y: number }>) => pts.map((p) => `${p.x},${p.y}`).join(' ');
-    const area = first
-      ? `M ${first.pts[0].x} ${first.pts[0].y} ${first.pts.map((p) => `L ${p.x} ${p.y}`).join(' ')} L ${first.pts[first.pts.length - 1].x} ${pad.top + innerH} L ${first.pts[0].x} ${pad.top + innerH} Z`
+    const solidFirst = first?.pts.filter((p): p is { x: number; y: number } => p != null) || [];
+    const area = solidFirst.length
+      ? `M ${solidFirst[0].x} ${solidFirst[0].y} ${solidFirst.map((p) => `L ${p.x} ${p.y}`).join(' ')} L ${solidFirst[solidFirst.length - 1].x} ${pad.top + innerH} L ${solidFirst[0].x} ${pad.top + innerH} Z`
       : '';
     return (
       <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="100%" className="dash-plot" role="img">
@@ -228,9 +257,17 @@ function Cartesian({
             </g>
           );
         })}
-        {paths.map((p) => (
-          <polyline key={p.field} fill="none" stroke={p.color} strokeWidth={2} strokeDasharray={p.dashed ? '6 5' : undefined} points={dLine(p.pts)} />
-        ))}
+        {paths.map((p) => polylineSegments(p.pts).map((seg, i) => (
+          <polyline
+            key={`${p.field}-${i}`}
+            fill="none"
+            stroke={p.color}
+            strokeWidth={2}
+            strokeDasharray={p.dashed ? '6 5' : undefined}
+            data-compare={p.field === '__compare' ? '1' : undefined}
+            points={dLine(seg)}
+          />
+        )))}
       </svg>
     );
   }
@@ -285,12 +322,51 @@ function Cartesian({
             {n <= 8 && (
               <text x={x + barW / 2} y={pad.top + innerH - bh - 6} textAnchor="middle" fontSize="11" fill={palette.text}>{formatMetric(value, fmt)}</text>
             )}
-            <text x={x + barW / 2} y={height - 8} textAnchor={i === n - 1 ? 'end' : 'middle'} fontSize="11" fill={palette.muted}>{clip(labels[i], 14)}</text>
+            <text x={x + barW / 2} y={height - 8} textAnchor="middle" fontSize="11" fill={palette.muted}>{clip(labels[i], 14)}</text>
           </g>
         );
       })}
     </svg>
   );
+}
+
+function polylineSegments(pts: Array<{ x: number; y: number } | null>): Array<Array<{ x: number; y: number }>> {
+  const segs: Array<Array<{ x: number; y: number }>> = [];
+  let current: Array<{ x: number; y: number }> = [];
+  for (const pt of pts) {
+    if (!pt) {
+      if (current.length >= 2) segs.push(current);
+      current = [];
+      continue;
+    }
+    current.push(pt);
+  }
+  if (current.length >= 2) segs.push(current);
+  return segs;
+}
+
+function gridX(
+  pad: { top: number; left: number },
+  innerW: number,
+  innerH: number,
+  height: number,
+  xMin: number,
+  xMax: number,
+  palette: DashboardSpec['theme']['palette'],
+  fmt: string,
+) {
+  return Array.from({ length: 5 }, (_, i) => {
+    const tick = xMin + ((xMax - xMin) * i) / 4;
+    const x = pad.left + ((tick - xMin) / (xMax - xMin || 1)) * innerW;
+    return (
+      <g key={`x-${i}`}>
+        <line x1={x} x2={x} y1={pad.top} y2={pad.top + innerH} stroke={palette.border} strokeDasharray="3 6" />
+        <text x={x} y={height - 22} textAnchor={i === 0 ? 'start' : i === 4 ? 'end' : 'middle'} fontSize="11" fill={palette.muted}>
+          {formatMetric(tick, fmt as 'number')}
+        </text>
+      </g>
+    );
+  });
 }
 
 function gridY(
@@ -317,7 +393,7 @@ function gridY(
 }
 
 function xTicks(
-  data: Array<Record<string, string | number>>,
+  data: Array<PlotRow>,
   pad: { left: number; top: number },
   innerW: number,
   height: number,
@@ -325,12 +401,20 @@ function xTicks(
 ) {
   const max = Math.min(8, data.length);
   const step = data.length <= max ? 1 : Math.ceil(data.length / max);
+  const placed: number[] = [];
   return data.map((d, i) => {
     if (i % step !== 0 && i !== data.length - 1) return null;
     const x = pad.left + (innerW * i) / Math.max(data.length - 1, 1);
+    const label = prettyTick(String(d.label || d.name || ''));
+    if (placed.length) {
+      const prev = placed[placed.length - 1];
+      const minGap = Math.max(40, label.length * 4.2);
+      if (x - prev < minGap) return null;
+    }
+    placed.push(x);
     return (
       <text key={i} x={x} y={height - 8} textAnchor={i === data.length - 1 ? 'end' : i === 0 ? 'start' : 'middle'} fontSize="11" fill={palette.muted}>
-        {prettyTick(String(d.label || d.name || ''))}
+        {label}
       </text>
     );
   });
@@ -616,5 +700,3 @@ function prettyTick(value: string): string {
 function clip(value: string, max: number): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
-
-void prettyField;
