@@ -24,6 +24,12 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { ThemeToggle } from '../shell/ThemeToggle';
 
+function initialsFor(name?: string) {
+  const parts = String(name || 'S').trim().split(/\s+/).filter(Boolean);
+  const letters = (parts[0]?.[0] || 'S') + (parts[1]?.[0] || '');
+  return letters.toUpperCase();
+}
+
 export function AppLayout() {
   const user = useStore((state) => state.user);
   const spaces = useStore((state) => state.spaces);
@@ -92,13 +98,16 @@ export function AppLayout() {
             end={item.path === `/space/${spaceId}`}
             onClick={() => setMobileOpen(false)}
             className={({ isActive }) => `
-              flex items-center px-3 py-2.5 rounded-2xl text-sm transition-all font-medium
-              ${isActive ? 'bg-[var(--accent)] text-[var(--primary)]' : 'text-[var(--muted-foreground)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)]'}
+              flex items-center px-3 py-2.5 rounded-2xl text-sm transition-all font-medium relative
+              ${isActive
+                ? 'bg-[var(--nav-active-bg)] text-[var(--nav-active-fg)] pl-[15px]'
+                : 'text-[var(--nav-inactive-fg)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)]'}
             `}
           >
             {({ isActive }) => (
               <>
-                <item.icon className={`w-4 h-4 mr-3 ${isActive ? 'text-[var(--primary)]' : ''}`} />
+                {isActive && <span aria-hidden className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-[var(--nav-marker)]" />}
+                <item.icon className={`w-4 h-4 mr-3 ${isActive ? 'text-[var(--nav-active-fg)]' : ''}`} />
                 {item.name}
               </>
             )}
@@ -196,8 +205,8 @@ export function AppLayout() {
                 </div>
               )}
             </div>
-            <div className="h-11 w-11 rounded-full bg-[var(--accent)] border border-[var(--border)] hidden sm:flex items-center justify-center text-[var(--primary)] font-bold">
-              {(user?.name || 'S').charAt(0)}
+            <div className="h-11 w-11 rounded-full bg-[var(--nav-active-fg)] border border-[var(--border)] hidden sm:flex items-center justify-center text-[var(--primary-foreground)] font-bold text-sm">
+              {initialsFor(user?.name)}
             </div>
           </div>
         </header>

@@ -78,7 +78,6 @@ export function ExecutiveReportBuilder({ spaceId }: { spaceId: string }) {
       `;
 
       const payload = {
-        model: 'gemini-3-flash-preview',
         contents: [
           {
             role: 'user',

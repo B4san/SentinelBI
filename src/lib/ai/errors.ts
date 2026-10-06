@@ -6,6 +6,7 @@ export function mapProviderError(opts: {
   body?: string;
   provider?: string;
   cause?: unknown;
+  retryAfterMs?: number;
 }): AIProviderError {
   const status = opts.status ?? 500;
   const provider = opts.provider ?? 'unknown';
@@ -13,9 +14,17 @@ export function mapProviderError(opts: {
 
   if (status === 401 || status === 403) {
     return new AIProviderError({
-      message: `Authentication failed for ${provider}. Check the API key and that it is enabled for this endpoint.`,
+      message: `invalid API key for ${provider}`,
       status,
       code: 'auth',
+      provider,
+    });
+  }
+  if (status === 402 || /insufficient (credits|quota|funds)|payment required/i.test(raw)) {
+    return new AIProviderError({
+      message: `insufficient credits for ${provider}`,
+      status: 402,
+      code: 'payment',
       provider,
     });
   }
@@ -29,14 +38,26 @@ export function mapProviderError(opts: {
   }
   if (status === 429) {
     const daily = isDailyFreeQuotaError(raw);
+    const retrySec = opts.retryAfterMs != null ? Math.max(1, Math.round(opts.retryAfterMs / 1000)) : undefined;
     return new AIProviderError({
       message: daily
-        ? `${provider} free quota is exhausted. It resets daily.`
-        : `${provider} rate-limited the request (429). Wait and retry.`,
+        ? `free quota exhausted, resets daily`
+        : retrySec
+          ? `rate limited, retry in ${retrySec}s`
+          : `rate limited, retry shortly`,
       status,
       code: 'rate_limit',
       provider,
       retryable: !daily,
+    });
+  }
+  if (status === 504) {
+    return new AIProviderError({
+      message: raw || `Request to ${provider} timed out.`,
+      status: 504,
+      code: 'timeout',
+      provider,
+      retryable: true,
     });
   }
   if (status >= 500) {
@@ -79,5 +100,13 @@ export function extractMessage(error: unknown): string {
 
 export function toUserFacingError(error: unknown, provider = 'AI provider'): AIProviderError {
   if (error instanceof AIProviderError) return error;
+  if (error && typeof error === 'object' && 'status' in error && Number((error as { status: unknown }).status) === 504) {
+    return mapProviderError({
+      status: 504,
+      body: error instanceof Error ? error.message : 'Request timed out',
+      provider,
+      cause: error,
+    });
+  }
   return mapProviderError({ cause: error, provider });
 }

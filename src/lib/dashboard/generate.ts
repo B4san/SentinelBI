@@ -1,9 +1,10 @@
 import { loadAiSettings } from '../ai/client';
 import {
   GenerationTimeoutError,
-  OVERALL_GENERATE_DEADLINE_MS,
   modelSupportsStructuredOutputs,
   openaiGenerate,
+  resolveGenerateDeadlineMs,
+  resolveStepTimeoutMs,
   type ResponseFormatStep,
 } from '../ai/openaiCompatible';
 import { geminiGenerate } from '../ai/geminiAdapter';
@@ -26,6 +27,7 @@ export interface GenerateAttempt {
   ms: number;
   error?: string;
   model?: string;
+  keySource?: 'user' | 'env' | 'none';
 }
 
 export interface GenerateDashboardResult {
@@ -87,7 +89,7 @@ export async function generateDashboardOnServer(
   env: EnvLike = typeof process !== 'undefined' ? process.env : {},
 ): Promise<GenerateDashboardResult> {
   const started = Date.now();
-  const deadlineMs = ctx.deadlineMs ?? Number(env.GENERATE_DEADLINE_MS || OVERALL_GENERATE_DEADLINE_MS);
+  const deadlineMs = ctx.deadlineMs ?? resolveGenerateDeadlineMs(env);
   const deadlineAt = started + deadlineMs;
   const attempts: GenerateAttempt[] = [];
   const { prompt, seed, archetype } = buildDashboardPrompt({
@@ -111,6 +113,13 @@ export async function generateDashboardOnServer(
   const def = PROVIDERS[config.provider];
   const hasKey = Boolean(config.apiKey) || !def.requiresApiKey;
   const fetchImpl = ctx.fetchImpl || fetch;
+  attempts.push({
+    step: 'resolve',
+    status: 200,
+    ms: 0,
+    model: config.model,
+    keySource: config.source.apiKey,
+  });
 
   const finishFallback = (reason: string): GenerateDashboardResult => ({
     spec: lockUserTitle(withUniqueId(fallbackSpec({ ...ctx, seed, archetype })), ctx.title),
@@ -185,7 +194,7 @@ export async function generateDashboardOnServer(
           maxTokens: Number(env.AI_MAX_TOKENS || 8000),
           jsonSchema: step === 'json_schema' ? DASHBOARD_JSON_SCHEMA : undefined,
           format: step,
-          timeoutMs: remaining(),
+          timeoutMs: resolveStepTimeoutMs(remaining(), env),
           fetchImpl,
           retries: step === 'json_schema' ? 0 : 2,
           rateLimitWaitMs: ctx.rateLimitWaitMs ?? Number(env.AI_RATE_LIMIT_WAIT_MS || 5000),
@@ -337,8 +346,17 @@ export async function generateDashboardSpec(
       return {
         spec: fallbackSpec(ctx),
         source: 'fallback',
-        error: data.error || 'Dashboard generation failed.',
-        fallbackReason: data.fallbackReason || data.error || 'Dashboard generation failed.',
+        error: data.error || `Dashboard generation failed (${res.status}).`,
+        fallbackReason: data.fallbackReason || data.error || `Dashboard generation failed (${res.status}).`,
+        attempts: data.attempts,
+      };
+    }
+    if (!res.ok && data.spec) {
+      return {
+        spec: data.spec,
+        source: data.source || 'fallback',
+        error: data.error,
+        fallbackReason: data.fallbackReason || data.error,
         attempts: data.attempts,
       };
     }

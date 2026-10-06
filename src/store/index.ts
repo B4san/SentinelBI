@@ -74,6 +74,16 @@ export interface Space {
   savedDashboards?: SavedDashboard[];
   activeDashboardId?: string;
   globalFilters?: { field: string; op: string; value: string }[];
+  generationRuns?: {
+    at: string;
+    source: 'ai' | 'fallback';
+    model?: string;
+    provider?: string;
+    keySource?: 'user' | 'env' | 'none';
+    fallbackReason?: string;
+    attempts?: { step: string; status?: number; ms: number; error?: string; model?: string; keySource?: 'user' | 'env' | 'none' }[];
+  }[];
+  topologyLayout?: Record<string, { x: number; y: number }>;
   
   // Execution Context
   executionState: 'idle' | 'running' | 'completed';
@@ -146,6 +156,7 @@ export interface AppState {
   addSecurityEvent: (spaceId: string, event: Omit<GovernanceLog, 'id' | 'timestamp'>) => void;
   addChatMessage: (spaceId: string, msg: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
   saveTopology: (spaceId: string, nodes: any[], edges: any[]) => void;
+  saveTopologyLayout: (spaceId: string, layout: Record<string, { x: number; y: number }>) => void;
   clearAllData: () => void;
 }
 
@@ -220,8 +231,17 @@ export const useStore = create<AppState>()(
       },
 
       saveTopology: (spaceId, nodes, edges) => {
+        const layout: Record<string, { x: number; y: number }> = {};
+        (nodes || []).forEach((node: { id?: string; position?: { x: number; y: number } }) => {
+          if (node?.id && node.position) layout[node.id] = node.position;
+        });
         set((state) => ({
-          spaces: state.spaces.map(s => s.id === spaceId ? { ...s, topologyNodes: nodes, topologyEdges: edges } : s)
+          spaces: state.spaces.map(s => s.id === spaceId ? { ...s, topologyNodes: nodes, topologyEdges: edges, topologyLayout: { ...(s.topologyLayout || {}), ...layout } } : s)
+        }));
+      },
+      saveTopologyLayout: (spaceId, layout) => {
+        set((state) => ({
+          spaces: state.spaces.map((s) => s.id === spaceId ? { ...s, topologyLayout: layout } : s),
         }));
       },
 

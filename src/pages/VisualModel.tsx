@@ -38,6 +38,7 @@ export function VisualModel() {
   const [presetName, setPresetName] = useState('');
 
   const appearance = useStore((state) => state.appearance);
+  const aiSettings = useStore((state) => state.aiSettings);
   const datasets = useMemo(() => (activeSpace ? toDashboardDatasets(activeSpace) : []), [activeSpace]);
   const spec: DashboardSpec | null = useMemo(() => {
     if (!activeSpace) return null;
@@ -71,9 +72,22 @@ export function VisualModel() {
       mode: appearance.mode,
     });
     persist(result.spec);
-    setStatus(result.source === 'ai'
-      ? 'Generated from the configured provider.'
-      : result.fallbackReason || result.error || 'Used a data-fitted layout (no live model).');
+    const run = {
+      at: new Date().toISOString(),
+      source: result.source,
+      model: result.spec.generatedBy || aiSettings.model,
+      provider: aiSettings.provider,
+      fallbackReason: result.fallbackReason,
+      attempts: result.attempts,
+    };
+    updateSpace(spaceId!, {
+      generationRuns: [run, ...(activeSpace.generationRuns || [])].slice(0, 20),
+    });
+    setStatus(
+      [result.source === 'ai' ? 'Generated from the configured provider.' : null, result.fallbackReason || result.error]
+        .filter(Boolean)
+        .join(' — ') || 'Used a data-fitted layout (no live model).',
+    );
     setBusy(false);
     setPrompt('');
   };

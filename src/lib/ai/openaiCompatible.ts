@@ -2,8 +2,11 @@ import { mapProviderError } from './errors';
 import { isDailyFreeQuotaError } from './providers';
 import type { ModelInfo, ResolvedProviderConfig } from './types';
 
+import { resolveGenerateDeadlineMs, resolveStepTimeoutMs } from '../../server/runtime';
+
 export const GENERATE_TIMEOUT_MS = 240_000;
-export const OVERALL_GENERATE_DEADLINE_MS = 300_000;
+export const OVERALL_GENERATE_DEADLINE_MS = 240_000;
+export { resolveGenerateDeadlineMs, resolveStepTimeoutMs };
 
 export class GenerationTimeoutError extends Error {
   status = 504;
