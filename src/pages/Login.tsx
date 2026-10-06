@@ -6,6 +6,8 @@ import { useStore } from '../store';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../components/ui/card';
+import { AuroraBackdrop } from '../components/shell/AuroraBackdrop';
+import { CinematicText } from '../components/shell/CinematicText';
 
 export function Login() {
   const login = useStore(state => state.login);
@@ -27,9 +29,7 @@ export function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-[var(--background)]">
-      {/* Decorative Background */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-200/40 rounded-full blur-[120px] pointer-events-none mix-blend-multiply" />
-      <div className="absolute top-1/4 right-1/4 w-[500px] h-[500px] bg-indigo-200/40 rounded-full blur-[100px] pointer-events-none mix-blend-multiply" />
+      <AuroraBackdrop />
       
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -42,7 +42,7 @@ export function Login() {
              <div className="absolute inset-0 rounded-[1.25rem] bg-gradient-to-br from-blue-50 to-white opacity-50"></div>
              <Hexagon className="w-8 h-8 text-blue-600 fill-blue-600/10" />
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Sentinel<span className="text-blue-600">BI</span></h1>
+          <CinematicText className="text-3xl font-extrabold tracking-tight text-[var(--foreground)]">Sentinel<span className="text-blue-600">BI</span></CinematicText>
           <p className="text-gray-500 mt-2 font-medium">Enterprise AI Analytics & Governance</p>
         </div>
 

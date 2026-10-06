@@ -3,10 +3,12 @@ import { useSearchParams } from 'react-router-dom';
 import { DashboardCanvas } from '../components/dashboard/DashboardCanvas';
 import { buildFallbackDashboard } from '../lib/dashboard/fallback';
 import { LAYOUT_ARCHETYPES, type LayoutArchetype } from '../lib/dashboard/types';
+import { mockedAiSpec } from '../lib/dashboard/mockedAiSpec';
 import { createSampleSpace, toDashboardDatasets, type SampleKind } from '../lib/sampleData';
+import { ThinkingLoader } from '../components/shell/ThinkingLoader';
 import { useStore } from '../store';
 
-const KINDS: SampleKind[] = ['sales', 'web', 'hr', 'support'];
+const KINDS: SampleKind[] = ['sales', 'web', 'finance', 'hr', 'support'];
 
 export function DashboardPreview() {
   const [params] = useSearchParams();
@@ -27,18 +29,30 @@ export function DashboardPreview() {
 
   const space = useMemo(() => createSampleSpace(kind), [kind]);
   const datasets = useMemo(() => toDashboardDatasets(space), [space]);
+  const generating = params.get('state') === 'generating';
+  const mocked = params.get('spec') === 'mocked';
   const spec = useMemo(
-    () => buildFallbackDashboard({
-      title: space.title,
-      intent: space.promptContext,
-      datasets,
-      seed,
-      archetype,
-      paletteId,
-      mode,
-    }),
-    [space, datasets, seed, archetype, paletteId, mode],
+    () => mocked
+      ? mockedAiSpec(datasets)
+      : buildFallbackDashboard({
+          title: space.title,
+          intent: space.promptContext,
+          datasets,
+          seed,
+          archetype,
+          paletteId,
+          mode,
+        }),
+    [space, datasets, seed, archetype, paletteId, mode, mocked],
   );
+
+  if (generating) {
+    return (
+      <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex items-center justify-center">
+        <ThinkingLoader />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">

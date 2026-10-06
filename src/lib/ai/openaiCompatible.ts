@@ -15,14 +15,22 @@ export function buildChatBody(opts: {
   stream?: boolean;
   json?: boolean;
   temperature?: number;
+  maxTokens?: number;
+  jsonSchema?: Record<string, unknown>;
 }): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: opts.model,
     messages: opts.messages,
     stream: Boolean(opts.stream),
     temperature: opts.temperature ?? 0.4,
+    max_tokens: opts.maxTokens ?? 8000,
   };
-  if (opts.json) {
+  if (opts.jsonSchema) {
+    body.response_format = {
+      type: 'json_schema',
+      json_schema: { name: 'dashboard_spec', strict: false, schema: opts.jsonSchema },
+    };
+  } else if (opts.json) {
     body.response_format = { type: 'json_object' };
   }
   return body;
@@ -58,7 +66,7 @@ export function extractChatText(payload: unknown): string {
 export async function openaiGenerate(
   config: ResolvedProviderConfig,
   messages: { role: string; content: string }[],
-  opts: { json?: boolean; temperature?: number } = {},
+  opts: { json?: boolean; temperature?: number; maxTokens?: number; jsonSchema?: Record<string, unknown> } = {},
 ): Promise<string> {
   let res: Response;
   try {
@@ -72,6 +80,8 @@ export async function openaiGenerate(
           stream: false,
           json: opts.json,
           temperature: opts.temperature,
+          maxTokens: opts.maxTokens,
+          jsonSchema: opts.jsonSchema,
         }),
       ),
     });
@@ -79,7 +89,28 @@ export async function openaiGenerate(
     throw mapProviderError({ cause, provider: config.provider, status: 0 });
   }
 
-  const raw = await res.text();
+  let raw = await res.text();
+  if (!res.ok && opts.jsonSchema && (res.status === 400 || res.status === 422)) {
+    try {
+      res = await fetch(chatCompletionsUrl(config.baseUrl), {
+        method: 'POST',
+        headers: authHeaders(config),
+        body: JSON.stringify(
+          buildChatBody({
+            model: config.model,
+            messages,
+            stream: false,
+            json: true,
+            temperature: opts.temperature,
+            maxTokens: opts.maxTokens,
+          }),
+        ),
+      });
+      raw = await res.text();
+    } catch (cause) {
+      throw mapProviderError({ cause, provider: config.provider, status: 0 });
+    }
+  }
   if (!res.ok) {
     throw mapProviderError({ status: res.status, body: raw, provider: config.provider });
   }

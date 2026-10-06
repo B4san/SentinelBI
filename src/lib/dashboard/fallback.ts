@@ -19,9 +19,13 @@ import type {
   DashboardDataset,
   DashboardSpec,
   DashboardWidget,
+  DerivedMeasure,
   LayoutArchetype,
 } from './types';
 import { LAYOUT_ARCHETYPES } from './types';
+import { nearestComponent } from './catalog';
+import { finalizeDashboardSpec } from './finalize';
+import { computeDerivedValue, formatDerived, proposeDerivedMeasures } from './measures';
 
 export interface GenerateDashboardContext {
   title?: string;
@@ -37,13 +41,14 @@ interface DerivedKpi {
   title: string;
   field?: string;
   aggregation: Aggregation;
-  format: 'number' | 'currency' | 'percent';
+  format: 'number' | 'currency' | 'percent' | 'multiple' | 'duration';
   value: number;
   delta?: number;
   sparkline?: number[];
   filter?: DashboardWidget['filter'];
   hint?: string;
   polarity: MetricPolarity;
+  measure?: DerivedMeasure;
 }
 
 function chooseChartType(
@@ -123,6 +128,19 @@ export function buildBusinessKpis(dataset: DashboardDataset): DerivedKpi[] {
   for (const field of nums) {
     const aggregation: Aggregation = metricFormat(field) === 'percent' ? 'avg' : 'sum';
     push(measureKpi(rows, field, aggregation, times[0]));
+  }
+
+  for (const candidate of proposeDerivedMeasures(dataset)) {
+    const raw = candidate.measure;
+    push({
+      title: candidate.title,
+      field: raw.numerator.field,
+      aggregation: raw.numerator.agg || 'sum',
+      format: raw.format || 'number',
+      value: computeDerivedValue(rows, raw),
+      polarity: inferMetricPolarity(candidate.title),
+      measure: raw,
+    });
   }
 
   if (nums[0] && cats[0]) {
@@ -223,8 +241,10 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
         filter: kpi.filter,
         color: palette.chart[index % palette.chart.length],
         polarity: kpi.polarity,
+        componentId: 'arc.metric-card',
+        measure: kpi.measure,
         kpi: {
-          value: formatMetric(kpi.value, kpi.format),
+          value: kpi.measure ? formatDerived(kpi.value, kpi.format) : formatMetric(kpi.value, kpi.format),
           trend,
           field: kpi.field,
           aggregation: kpi.aggregation,
@@ -267,13 +287,22 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
     }
 
     if (slot.type === 'table') {
+      const measure = nums[0];
       widgets.push({
         id: `table-${index}`,
         type: 'table',
-        title: 'Detail slice',
+        title: measure ? `Top 15 rows by ${prettyField(measure).toLowerCase()}` : 'Detail slice',
         layout: slot.layout,
         datasetId: primary.id,
+        componentId: 'arc.sortable-data-table',
         columns: [...cats.slice(0, 2), ...times.slice(0, 1), ...nums.slice(0, 3)].filter(Boolean),
+        table: measure
+          ? {
+              sort: { field: measure, dir: 'desc' },
+              limit: 15,
+              measures: nums.slice(0, 3).map((field) => ({ field, agg: metricFormat(field) === 'percent' ? 'avg' as const : 'sum' as const, format: metricFormat(field) })),
+            }
+          : undefined,
       });
       return;
     }
@@ -314,6 +343,10 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
     const yPretty = prettyField(yField || 'value');
     const xPretty = prettyField(xField || 'category');
 
+    const budget = nums.find((n) => /budget/i.test(n));
+    const series = budget && yField && /opex|revenue|ebitda/i.test(yField)
+      ? [{ field: yField, style: 'bar' as const }, { field: budget, style: 'dashed' as const, label: prettyField(budget) }]
+      : undefined;
     widgets.push({
       id: `chart-${index}`,
       type: 'chart',
@@ -327,6 +360,9 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
       datasetId: primary.id,
       xField,
       yField,
+      componentId: nearestComponent(undefined, 'chart', chartType).id,
+      series,
+      targetField: budget,
       groupField: cats[(chartCursor + 1) % Math.max(cats.length, 1)],
       color: palette.chart[index % palette.chart.length],
       aggregation: metricFormat(yField) === 'percent' ? 'avg' : 'sum',
@@ -337,7 +373,7 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
   const editorial = archetype === 'editorial' || archetype === 'story-arc';
   const dense = archetype === 'command-center' || archetype === 'metric-mosaic';
 
-  return {
+  const spec: DashboardSpec = {
     version: 1,
     id: `dash-${seed.toString(16)}`,
     title: ctx.title || deriveTitle(ctx.intent, archetype),
@@ -359,6 +395,7 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
     sections: [{ id: 'main', title: 'Primary view' }],
     widgets: widgets.filter((w) => w.type !== 'kpi' || !isFillerKpi(w)),
   };
+  return finalizeDashboardSpec(spec, datasets);
 }
 
 function deriveTitle(intent: string | undefined, archetype: LayoutArchetype): string {

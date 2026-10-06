@@ -17,20 +17,17 @@ import {
   PieChart,
   Code,
   Menu,
-  Moon,
-  Sun,
   X,
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { ThemeToggle } from '../shell/ThemeToggle';
 
 export function AppLayout() {
   const user = useStore((state) => state.user);
   const spaces = useStore((state) => state.spaces);
   const logout = useStore((state) => state.logout);
-  const appearance = useStore((state) => state.appearance);
-  const setAppearance = useStore((state) => state.setAppearance);
   const navigate = useNavigate();
   const location = useLocation();
   const { spaceId } = useParams();
@@ -180,15 +177,7 @@ export function AppLayout() {
             </div>
           </div>
           <div className="flex items-center gap-2 md:gap-3 ml-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="rounded-full bg-[var(--card)] border border-[var(--border)] h-11 w-11"
-              onClick={() => setAppearance({ mode: appearance.mode === 'dark' ? 'light' : 'dark' })}
-              title="Toggle theme"
-            >
-              {appearance.mode === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </Button>
+            <ThemeToggle />
             <div className="relative">
               <Button variant="ghost" size="icon" className="relative rounded-full bg-[var(--card)] border border-[var(--border)] h-11 w-11" onClick={() => setShowAlerts((v) => !v)}>
                 <Bell className="w-5 h-5" />

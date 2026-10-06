@@ -61,6 +61,35 @@ export type Aggregation = (typeof AGGREGATIONS)[number];
 export const METRIC_POLARITIES = ['higher-is-better', 'lower-is-better'] as const;
 export type MetricPolarity = (typeof METRIC_POLARITIES)[number];
 
+export const MEASURE_FORMATS = ['number', 'currency', 'percent', 'multiple', 'duration'] as const;
+export type MeasureFormat = (typeof MEASURE_FORMATS)[number];
+
+export interface MeasureRef {
+  field: string;
+  agg?: Aggregation;
+}
+
+export interface DerivedMeasure {
+  kind: 'ratio' | 'difference' | 'margin';
+  numerator: MeasureRef;
+  denominator: MeasureRef;
+  format?: MeasureFormat;
+}
+
+export interface WidgetSeries {
+  field: string;
+  label?: string;
+  style?: 'line' | 'bar' | 'area' | 'dashed';
+  color?: string;
+}
+
+export interface TableQuery {
+  sort?: { field: string; dir: 'asc' | 'desc' };
+  limit?: number;
+  groupBy?: string[];
+  measures?: Array<{ field: string; agg?: Aggregation; format?: MeasureFormat }>;
+}
+
 export interface GridPosition {
   x: number;
   y: number;
@@ -107,12 +136,18 @@ export interface DashboardWidget {
   filter?: WidgetFilter;
   role?: 'hero' | 'support' | 'compare-a' | 'compare-b' | 'strip' | 'featured';
   polarity?: MetricPolarity;
+  componentId?: string;
+  measure?: DerivedMeasure;
+  series?: WidgetSeries[];
+  table?: TableQuery;
+  targetField?: string;
+  compare?: 'previous-period' | 'previous-year';
   kpi?: {
     value: string;
     trend?: string;
     field?: string;
     aggregation?: Aggregation;
-    format?: 'number' | 'currency' | 'percent';
+    format?: MeasureFormat;
     delta?: number;
     sparkline?: number[];
     polarity?: MetricPolarity;

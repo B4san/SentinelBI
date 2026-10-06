@@ -62,6 +62,7 @@ export interface GenerateRequest {
   contents?: unknown;
   messages?: ChatTurn[];
   temperature?: number;
+  maxTokens?: number;
 }
 
 export interface ModelInfo {

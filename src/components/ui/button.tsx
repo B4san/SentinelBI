@@ -39,9 +39,9 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <motion.button
         whileTap={{ scale: 0.98 }}
-        className={cn(buttonVariants.base, buttonVariants.variants.variant[variant as keyof typeof buttonVariants.variants.variant], buttonVariants.variants.size[size as keyof typeof buttonVariants.variants.size], className)}
+        className={cn(buttonVariants.base, buttonVariants.variants.variant[variant], buttonVariants.variants.size[size], className)}
         ref={ref}
-        {...(props as any)}
+        {...(props as unknown as React.ComponentProps<typeof motion.button>)}
       />
     )
   }

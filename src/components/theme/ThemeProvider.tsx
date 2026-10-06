@@ -8,6 +8,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', appearance.mode === 'dark');
+    document.documentElement.setAttribute('data-theme', appearance.mode);
+    document.documentElement.setAttribute('data-accent', 'blue');
     document.documentElement.style.colorScheme = appearance.mode;
   }, [appearance.mode]);
 

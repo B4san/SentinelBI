@@ -1,6 +1,8 @@
 import { computeDataTruth } from '../DataTruthEngine';
 import { DESIGN_PRINCIPLES } from './archetypes';
+import { catalogPromptBlock } from './catalog';
 import { analyzeDataset, classifyFields, prettyField } from './insights';
+import { proposeDerivedMeasures } from './measures';
 import { PALETTES, palettesForMode } from './palettes';
 import { createRng, makeSeed, pick } from './seed';
 import type { DashboardDataset, LayoutArchetype } from './types';
@@ -94,6 +96,14 @@ ${principles}
 13. theme.palette.background must be "transparent". Cards use a surface that matches ${mode} mode.
 14. Keep titles short. NEVER emit filler / meta KPIs: rows loaded, number of channels, number of devices, unique counts of dimensions, “Active cohorts”. If there are only 2–3 real measures, draw 2–3 larger cards.
 15. polarity is required on every KPI: "higher-is-better" (revenue, conversions, sessions) or "lower-is-better" (bounce rate, churn, cost, CAC, latency, errors, refunds, attrition). The UI colors an increase red and a decrease green when polarity is lower-is-better.
+16. Do NOT invent KPI numbers, deltas, or claims. The server overwrites every number from the data. Use derived measures for ratios (ROAS, CVR, GM%, EBITDA margin). Sentence case titles. No eyebrows or repeated headlines.
+17. Pick a componentId from the catalog. Use series[] for multi-measure charts and table.sort/limit for ranked tables. Horizontal bars must put the dimension on xField and the measure on yField.
+
+COMPONENT CATALOG:
+${catalogPromptBlock()}
+
+DERIVED MEASURE CANDIDATES:
+${opts.datasets.map((ds) => proposeDerivedMeasures(ds).map((m) => `${m.title}: ${m.measure.kind} ${m.measure.numerator.field}/${m.measure.denominator.field}`).join(', ') || '(none)').join('\n')}
 
 VARIETY RULES:
 - Mix widths (3,4,6,8,12). Do not clone a generic SaaS 4-up + 2-chart template unless the archetype is executive.
@@ -137,6 +147,10 @@ Return JSON with this exact shape:
       "xField": "exact column",
       "yField": "exact column",
       "aggregation": "sum",
+      "componentId": "arc.line-chart",
+      "measure": { "kind": "ratio", "numerator": { "field": "revenue", "agg": "sum" }, "denominator": { "field": "ad_spend", "agg": "sum" }, "format": "multiple" },
+      "series": [{ "field": "revenue", "style": "line" }, { "field": "ebitda", "style": "dashed" }],
+      "table": { "sort": { "field": "revenue", "dir": "desc" }, "limit": 15 },
       "polarity": "higher-is-better",
       "color": "#2563eb",
       "kpi": { "value": "1,240", "trend": "+4.2% vs first half", "field": "exact column", "aggregation": "sum", "format": "number", "delta": 4.2, "sparkline": [1, 2, 3, 4], "polarity": "higher-is-better" },

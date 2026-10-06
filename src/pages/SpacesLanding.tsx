@@ -9,6 +9,8 @@ import { Card, CardContent } from '../components/ui/card';
 import Papa from 'papaparse';
 import { generateContent } from '../lib/ai/client';
 import { createSampleSpace } from '../lib/sampleData';
+import { AuroraBackdrop } from '../components/shell/AuroraBackdrop';
+import { CinematicText } from '../components/shell/CinematicText';
 
 export function SpacesLanding() {
   const { spaces, createSpace, user, toggleFavoriteSpace } = useStore();
@@ -230,10 +232,8 @@ export function SpacesLanding() {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col items-center justify-center p-12 relative overflow-hidden bg-[#f5f7f9]">
-        {/* Subtle mesh gradients in background */}
-        <div className="absolute top-1/4 -right-20 w-[600px] h-[600px] bg-blue-200/40 rounded-full blur-[120px] pointer-events-none mix-blend-multiply" />
-        <div className="absolute -bottom-20 -left-20 w-[600px] h-[600px] bg-purple-200/40 rounded-full blur-[100px] pointer-events-none mix-blend-multiply" />
+      <div className="flex-1 flex flex-col items-center justify-center p-12 relative overflow-hidden bg-[var(--background)]">
+        <AuroraBackdrop />
 
         <motion.div 
           initial={{ opacity: 0, scale: 0.98, y: 10 }}
@@ -246,7 +246,7 @@ export function SpacesLanding() {
                 <div className="absolute inset-0 rounded-[1.5rem] mesh-gradient-cool opacity-10"></div>
                 <Hexagon className="w-10 h-10 text-blue-600 fill-blue-600/10" />
              </div>
-             <h1 className="text-4xl font-extrabold tracking-tight text-gray-900 mb-4">Create an Intelligence Space</h1>
+             <CinematicText className="text-4xl font-extrabold tracking-tight text-[var(--foreground)] mb-4">Create an Intelligence Space</CinematicText>
              <p className="text-gray-500 font-medium text-lg max-w-xl mx-auto leading-relaxed">Upload enterprise datasets to instantly spin up isolated topologies, governance tracking, and analytical models.</p>
           </div>
 
@@ -297,6 +297,9 @@ export function SpacesLanding() {
                   </Button>
                   <Button variant="outline" type="button" onClick={() => { const space = createSampleSpace('web'); createSpace(space); navigate(`/space/${space.id}/visuals`); }} className="rounded-full">
                     Sample web analytics
+                  </Button>
+                  <Button variant="outline" type="button" onClick={() => { const space = createSampleSpace('finance'); createSpace(space); navigate(`/space/${space.id}/visuals`); }} className="rounded-full">
+                    Sample finance
                   </Button>
                   <Button variant="outline" type="button" onClick={() => { const space = createSampleSpace('hr'); createSpace(space); navigate(`/space/${space.id}/visuals`); }} className="rounded-full">
                     Sample HR

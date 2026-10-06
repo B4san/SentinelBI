@@ -15,7 +15,7 @@ const salesDataset = {
   name: 'Sales',
   data: SAMPLE_SALES_ROWS as unknown as Record<string, unknown>[],
   columns: [
-    { name: 'date', type: 'date' },
+    { name: 'order_date', type: 'date' },
     { name: 'region', type: 'categorical' },
     { name: 'revenue', type: 'numeric' },
   ],
@@ -145,8 +145,8 @@ describe('insight engine', () => {
     expect(blob).not.toMatch(/leads Date/i);
     expect(blob).not.toMatch(/1 observations/i);
     expect(findings[0].text.length).toBeGreaterThan(24);
-    expect(classifyFields(salesDataset).time).toContain('date');
-    expect(classifyFields(salesDataset).dimensions).not.toContain('date');
+    expect(classifyFields(salesDataset).time).toContain('order_date');
+    expect(classifyFields(salesDataset).dimensions).not.toContain('order_date');
   });
 
   it('surfaces trend and cohort findings for sales data', () => {
@@ -211,7 +211,7 @@ describe('fallback quality', () => {
     };
     const spec = buildFallbackDashboard({ datasets: [webDataset], seed: 8, archetype: 'command-center', mode: 'dark' });
     expect(spec.theme.palette.mode).toBe('dark');
-    expect(spec.widgets.some((w) => w.type === 'chart' && w.xField === 'date')).toBe(true);
+    expect(spec.widgets.some((w) => w.type === 'chart' && (w.xField === 'date' || w.xField === 'order_date'))).toBe(true);
     expect(spec.narrative?.body).not.toMatch(/leads Date/i);
   });
 });
@@ -243,7 +243,7 @@ describe('metric polarity', () => {
       columns: [
         { name: 'date', type: 'date' },
         { name: 'channel', type: 'categorical' },
-        { name: 'bounce', type: 'numeric' },
+        { name: 'bounce_rate', type: 'numeric' },
         { name: 'sessions', type: 'numeric' },
       ],
     };

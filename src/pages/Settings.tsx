@@ -8,6 +8,7 @@ import { useStore } from '../store';
 import { PROVIDER_LIST, PROVIDERS } from '../lib/ai/providers';
 import { fetchModels, generateContent } from '../lib/ai/client';
 import type { ModelInfo, ProviderId } from '../lib/ai/types';
+import { LiquidSwitch } from '../components/shell/LiquidSwitch';
 
 export function Settings() {
   const { spaceId } = useParams();
@@ -200,16 +201,13 @@ export function Settings() {
           </CardTitle>
           <CardDescription>App chrome theme. Generated dashboards can still pick their own palette.</CardDescription>
         </CardHeader>
-        <CardContent className="flex gap-3">
-          {(['light', 'dark'] as const).map((mode) => (
-            <button
-              key={mode}
-              onClick={() => setAppearance({ mode })}
-              className={`px-4 py-3 rounded-2xl border capitalize ${appearance.mode === mode ? 'border-[var(--primary)] bg-[var(--accent)]' : 'border-[var(--border)]'}`}
-            >
-              {mode}
-            </button>
-          ))}
+        <CardContent className="flex items-center gap-4">
+          <LiquidSwitch
+            checked={appearance.mode === 'dark'}
+            onChange={(on) => setAppearance({ mode: on ? 'dark' : 'light' })}
+            label="Dark mode"
+          />
+          <span className="text-sm text-[var(--text-secondary)]">{appearance.mode === 'dark' ? 'Dark' : 'Light'} theme</span>
         </CardContent>
       </Card>
 

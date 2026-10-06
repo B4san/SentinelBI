@@ -4,24 +4,30 @@ import type { DashboardDataset, DashboardSpec, DashboardWidget } from '../../lib
 import { computeKpiStats, formatMetric } from '../../lib/dashboard/aggregate';
 import { metricFormat, prettyField } from '../../lib/dashboard/insights';
 import { deltaColor, inferMetricPolarity } from '../../lib/dashboard/metrics';
+import { prepareTableModel } from '../../lib/dashboard/table';
+import type { WidgetFilter } from '../../lib/dashboard/types';
 import { ChartRenderer } from './ChartRenderer';
 
 export function WidgetCard({
   spec,
   widget,
   datasets,
+  filters = [],
   editing,
   onSelect,
   onRegenerate,
+  onPointClick,
   selected,
 }: {
   spec: DashboardSpec;
   widget: DashboardWidget;
   datasets: DashboardDataset[];
+  filters?: WidgetFilter[];
   editing?: boolean;
   selected?: boolean;
   onSelect?: (id: string) => void;
   onRegenerate?: (id: string) => void;
+  onPointClick?: (field: string, value: string) => void;
 }) {
   const palette = spec.theme.palette;
   const radius = spec.theme.radius || 'rounded-2xl';
@@ -86,7 +92,7 @@ export function WidgetCard({
         </header>
       )}
       <div className={`min-h-0 min-w-0 flex-1 ${isKpi || isSection ? '' : 'px-3 pb-3 relative'}`}>
-        <WidgetBody spec={spec} widget={widget} datasets={datasets} editing={editing} />
+        <WidgetBody spec={spec} widget={widget} datasets={datasets} filters={filters} editing={editing} onPointClick={onPointClick} />
       </div>
     </article>
   );
@@ -116,17 +122,21 @@ function WidgetBody({
   spec,
   widget,
   datasets,
+  filters,
   editing,
+  onPointClick,
 }: {
   spec: DashboardSpec;
   widget: DashboardWidget;
   datasets: DashboardDataset[];
+  filters: WidgetFilter[];
   editing?: boolean;
+  onPointClick?: (field: string, value: string) => void;
 }) {
   const palette = spec.theme.palette;
 
   if (widget.type === 'kpi') {
-    const stats = computeKpiStats(datasets, widget, spec.filters);
+    const stats = computeKpiStats(datasets, widget, filters);
     const delta = stats.delta;
     const polarity = widget.kpi?.polarity || widget.polarity || inferMetricPolarity(widget.kpi?.field || widget.yField || widget.title);
     const down = (delta ?? 0) < 0;
@@ -146,7 +156,7 @@ function WidgetBody({
                   {widget.role === 'compare-a' ? 'A' : 'B'}
                 </span>
               )}
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] truncate" style={{ color: palette.muted }}>
+              <p className="text-[12px] font-medium truncate" style={{ color: palette.muted }}>
                 {widget.title}
               </p>
             </div>
@@ -183,7 +193,7 @@ function WidgetBody({
         className={`h-full flex ${strip ? 'flex-row items-center gap-4 px-4 py-3' : 'flex-col justify-start px-5 py-4'}`}
         style={{ borderLeft: featured ? `3px solid ${bar}` : undefined }}
       >
-        <p className="text-[10px] font-bold uppercase tracking-[0.16em] shrink-0" style={{ color: palette.accent }}>
+        <p className="text-[12px] font-semibold shrink-0" style={{ color: palette.accent }}>
           {widget.insight?.title || widget.title || 'Finding'}
         </p>
         <p
@@ -199,10 +209,7 @@ function WidgetBody({
   if (widget.type === 'section') {
     return (
       <div className="h-full flex flex-col justify-center px-1">
-        <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: palette.accent }}>
-          {spec.archetype.replace(/-/g, ' ')}
-        </p>
-        <h3 className={`${spec.theme.headingFont || spec.theme.fontFamily} text-xl font-semibold tracking-tight mt-1 leading-snug`}>
+        <h3 className={`${spec.theme.headingFont || spec.theme.fontFamily} text-xl font-semibold tracking-tight leading-snug`}>
           {widget.title}
         </h3>
         {widget.subtitle && (
@@ -213,15 +220,13 @@ function WidgetBody({
   }
 
   if (widget.type === 'table') {
-    const dataset = datasets.find((d) => d.id === widget.datasetId) || datasets[0];
-    const cols = widget.columns?.length ? widget.columns : Object.keys(dataset?.data?.[0] || {}).slice(0, 5);
-    const rows = (dataset?.data || []).slice(0, 8);
+    const model = prepareTableModel(datasets, widget, filters);
     return (
       <div className="overflow-auto h-full text-[12px]">
         <table className="w-full">
           <thead>
             <tr>
-              {cols.map((c) => (
+              {model.columns.map((c) => (
                 <th key={c} className="text-left font-semibold pb-2 pr-3 sticky top-0" style={{ color: palette.muted, background: palette.surface }}>
                   {prettyField(c)}
                 </th>
@@ -229,16 +234,11 @@ function WidgetBody({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, i) => (
+            {model.rows.map((row, i) => (
               <tr key={i} className="border-t" style={{ borderColor: palette.border }}>
-                {cols.map((c) => {
-                  const raw = row[c];
-                  const num = Number(raw);
-                  const shown = raw !== '' && raw != null && !Number.isNaN(num) && typeof raw !== 'boolean'
-                    ? formatMetric(num, metricFormat(c))
-                    : String(raw ?? '');
-                  return <td key={c} className="py-1.5 pr-3 tabular-nums">{shown}</td>;
-                })}
+                {model.columns.map((c) => (
+                  <td key={c} className="py-1.5 pr-3 tabular-nums">{String(row[c] ?? '')}</td>
+                ))}
               </tr>
             ))}
           </tbody>
@@ -249,7 +249,7 @@ function WidgetBody({
 
   return (
     <div className="h-full w-full min-h-0 min-w-0">
-      <ChartRenderer spec={spec} widget={widget} datasets={datasets} />
+      <ChartRenderer spec={spec} widget={widget} datasets={datasets} filters={filters} onPointClick={onPointClick} />
     </div>
   );
 }

@@ -1,5 +1,6 @@
+import { formatLocalDate, parseLocalDate } from './dates';
 import { aggregateNumber, formatMetric } from './format';
-import type { Aggregation, DashboardDataset } from './types';
+import type { Aggregation, DashboardDataset, MeasureFormat } from './types';
 
 export interface Finding {
   title: string;
@@ -14,7 +15,7 @@ export interface FieldClasses {
   time: string[];
 }
 
-const TIME_NAME = /^(date|time|day|week|month|year|opened|closed|period|timestamp|created|updated)/i;
+const TIME_NAME = /(_date|_at|_time)$|^(date|time|day|week|month|year|opened|closed|period|timestamp|created|updated)/i;
 const MONEY_NAME = /rev|sales|amount|price|gmv|arr|mrr|acv|spend|cost|payroll/i;
 const RATE_NAME = /(rate|margin|csat|nps|pct|percent|bounce|attrition|acceptRate)$/i;
 
@@ -28,17 +29,13 @@ export function prettyField(name: string): string {
 export function prettyValue(value: unknown): string {
   const raw = String(value ?? '').trim();
   if (!raw) return 'Unknown';
-  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
-    const d = new Date(raw);
-    if (!Number.isNaN(d.getTime())) {
-      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    }
-  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return formatLocalDate(raw);
   return raw;
 }
 
-export function metricFormat(field?: string): 'number' | 'currency' | 'percent' {
+export function metricFormat(field?: string): MeasureFormat {
   if (!field) return 'number';
+  if (/duration|seconds|_sec/i.test(field)) return 'duration';
   if (MONEY_NAME.test(field)) return 'currency';
   if (RATE_NAME.test(field)) return 'percent';
   return 'number';
@@ -120,7 +117,7 @@ export function periodChange(
   measure: string,
 ): { deltaPct: number; first: number; second: number } | null {
   const dated = rows
-    .map((row) => ({ t: Date.parse(String(row[timeField] ?? '')), v: Number(row[measure]) }))
+    .map((row) => ({ t: parseLocalDate(row[timeField])?.getTime() ?? NaN, v: Number(row[measure]) }))
     .filter((row) => !Number.isNaN(row.t) && !Number.isNaN(row.v))
     .sort((a, b) => a.t - b.t);
   if (dated.length < 4) return null;
@@ -140,7 +137,7 @@ export function sparklineValues(
   if (!rows.length) return [];
   if (timeField) {
     const dated = rows
-      .map((row) => ({ t: Date.parse(String(row[timeField] ?? '')), v: Number(row[measure]) }))
+      .map((row) => ({ t: parseLocalDate(row[timeField])?.getTime() ?? NaN, v: Number(row[measure]) }))
       .filter((row) => !Number.isNaN(row.t) && !Number.isNaN(row.v))
       .sort((a, b) => a.t - b.t);
     if (dated.length >= 3) return dated.slice(-points).map((row) => row.v);

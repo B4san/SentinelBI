@@ -6,16 +6,21 @@ import {
   DASHBOARD_SPEC_VERSION,
   FILTER_OPS,
   LAYOUT_ARCHETYPES,
+  MEASURE_FORMATS,
   WIDGET_TYPES,
   type Aggregation,
   type ChartType,
   type DashboardSpec,
   type DashboardWidget,
+  type DerivedMeasure,
   type FilterOp,
   type GridPosition,
   type LayoutArchetype,
   type LegacyDashboardLayout,
+  type MeasureFormat,
   type Palette,
+  type TableQuery,
+  type WidgetSeries,
   type WidgetType,
 } from './types';
 
@@ -92,6 +97,74 @@ function sanitizeFilter(raw: unknown): DashboardWidget['filter'] | undefined {
   };
 }
 
+const MEASURE_HINT = /rev|sales|amount|units|session|conversion|spend|cost|bounce|margin|opex|ebitda|headcount|cogs|discount/i;
+const DIM_HINT = /region|channel|device|product|segment|unit|center|dept|queue|landing|category|name/i;
+
+export function shouldSwapAxes(xField?: string, yField?: string, chartType?: ChartType): boolean {
+  if (!xField || !yField) return false;
+  if (chartType === 'scatter' || chartType === 'bubble') return false;
+  return MEASURE_HINT.test(xField) && DIM_HINT.test(yField) && !MEASURE_HINT.test(yField);
+}
+
+function sanitizeMeasure(raw: unknown): DerivedMeasure | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const rec = raw as Record<string, unknown>;
+  const kind = asString(rec.kind);
+  if (kind !== 'ratio' && kind !== 'difference' && kind !== 'margin') return undefined;
+  const num = rec.numerator && typeof rec.numerator === 'object' ? rec.numerator as Record<string, unknown> : null;
+  const den = rec.denominator && typeof rec.denominator === 'object' ? rec.denominator as Record<string, unknown> : null;
+  if (!num || !den || !asString(num.field) || !asString(den.field)) return undefined;
+  return {
+    kind,
+    numerator: { field: asString(num.field), agg: AGG_SET.has(asString(num.agg)) ? asString(num.agg) as Aggregation : 'sum' },
+    denominator: { field: asString(den.field), agg: AGG_SET.has(asString(den.agg)) ? asString(den.agg) as Aggregation : 'sum' },
+    format: MEASURE_FORMATS.includes(asString(rec.format) as MeasureFormat) ? asString(rec.format) as MeasureFormat : undefined,
+  };
+}
+
+function sanitizeSeries(raw: unknown): WidgetSeries[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const series = raw
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    .map((item) => ({
+      field: asString(item.field),
+      label: asString(item.label) || undefined,
+      style: (['line', 'bar', 'area', 'dashed'] as const).includes(asString(item.style) as 'line')
+        ? asString(item.style) as WidgetSeries['style']
+        : undefined,
+      color: isHexColor(asString(item.color)) ? asString(item.color) : undefined,
+    }))
+    .filter((item) => item.field);
+  return series.length ? series : undefined;
+}
+
+function sanitizeTable(raw: unknown, title: string): TableQuery | undefined {
+  const rec = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+  const sortField = asString((rec.sort as { field?: string } | undefined)?.field || rec.sortField);
+  const top = title.match(/top\s+(\d+)/i);
+  const by = title.match(/by\s+([a-z0-9_ ]+)/i);
+  const limit = Number(rec.limit) || (top ? Number(top[1]) : undefined);
+  const field = sortField || (by ? by[1].trim().replace(/\s+/g, '_') : '');
+  const groupBy = Array.isArray(rec.groupBy) ? rec.groupBy.map((c) => String(c)) : undefined;
+  const measures = Array.isArray(rec.measures)
+    ? rec.measures
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map((item) => ({
+        field: asString(item.field),
+        agg: AGG_SET.has(asString(item.agg)) ? asString(item.agg) as Aggregation : 'sum' as const,
+        format: MEASURE_FORMATS.includes(asString(item.format) as MeasureFormat) ? asString(item.format) as MeasureFormat : undefined,
+      }))
+      .filter((item) => item.field)
+    : undefined;
+  if (!field && !limit && !groupBy && !measures) return undefined;
+  return {
+    sort: field ? { field, dir: asString((rec.sort as { dir?: string } | undefined)?.dir) === 'asc' ? 'asc' : 'desc' } : undefined,
+    limit,
+    groupBy,
+    measures,
+  };
+}
+
 function defaultLayoutFor(type: WidgetType, index: number): GridPosition {
   if (type === 'kpi') return { x: (index % 4) * 3, y: Math.floor(index / 4) * 3, w: 3, h: 3 };
   if (type === 'insight' || type === 'section') return { x: 0, y: index * 3, w: 12, h: 3 };
@@ -106,9 +179,18 @@ export function sanitizeWidget(raw: unknown, index: number, palette: Palette): D
   const chartType = CHART_SET.has(chartTypeRaw) ? (chartTypeRaw as ChartType) : type === 'chart' ? 'bar' : undefined;
   const aggregation = AGG_SET.has(asString(rec.aggregation)) ? (asString(rec.aggregation) as Aggregation) : 'sum';
   const title = asString(rec.title || rec.label, type === 'kpi' ? `Metric ${index + 1}` : `Widget ${index + 1}`);
-  const yField = asString(rec.yField || rec.yAxisField) || undefined;
+  let xField = asString(rec.xField || rec.xAxisField) || undefined;
+  let yField = asString(rec.yField || rec.yAxisField) || undefined;
+  if (shouldSwapAxes(xField, yField, chartType)) {
+    const tmp = xField;
+    xField = yField;
+    yField = tmp;
+  }
   const kpiRec = rec.kpi && typeof rec.kpi === 'object' ? (rec.kpi as Record<string, unknown>) : undefined;
   const polarity = sanitizePolarity(rec.polarity || kpiRec?.polarity, asString(kpiRec?.field) || yField, title);
+  const measure = sanitizeMeasure(rec.measure);
+  const series = sanitizeSeries(rec.series);
+  const table = sanitizeTable(rec.table, title);
 
   return {
     id: asString(rec.id, `w-${index + 1}`),
@@ -119,8 +201,14 @@ export function sanitizeWidget(raw: unknown, index: number, palette: Palette): D
     layout: sanitizeGrid(rec.layout, defaultLayoutFor(type, index)),
     chartType,
     datasetId: asString(rec.datasetId) || undefined,
-    xField: asString(rec.xField || rec.xAxisField) || undefined,
+    xField,
     yField,
+    componentId: asString(rec.componentId) || undefined,
+    measure,
+    series,
+    table,
+    targetField: asString(rec.targetField) || undefined,
+    compare: rec.compare === 'previous-year' || rec.compare === 'previous-period' ? rec.compare : undefined,
     polarity,
     groupField: asString(rec.groupField) || undefined,
     sizeField: asString(rec.sizeField) || undefined,
@@ -145,10 +233,10 @@ export function sanitizeWidget(raw: unknown, index: number, palette: Palette): D
           aggregation: AGG_SET.has(asString((rec.kpi as Record<string, unknown>).aggregation))
             ? (asString((rec.kpi as Record<string, unknown>).aggregation) as Aggregation)
             : undefined,
-          format: (['number', 'currency', 'percent'] as const).includes(
-            asString((rec.kpi as Record<string, unknown>).format) as 'number',
+          format: MEASURE_FORMATS.includes(
+            asString((rec.kpi as Record<string, unknown>).format) as MeasureFormat,
           )
-            ? (asString((rec.kpi as Record<string, unknown>).format) as 'number' | 'currency' | 'percent')
+            ? (asString((rec.kpi as Record<string, unknown>).format) as MeasureFormat)
             : undefined,
           delta: Number.isFinite(Number((rec.kpi as Record<string, unknown>).delta))
             ? Number((rec.kpi as Record<string, unknown>).delta)

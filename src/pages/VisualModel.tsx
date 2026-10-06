@@ -19,6 +19,7 @@ import { PALETTES } from '../lib/dashboard/palettes';
 import { toDashboardDatasets } from '../lib/sampleData';
 import type { DashboardSpec, LayoutArchetype } from '../lib/dashboard/types';
 import { LAYOUT_ARCHETYPES } from '../lib/dashboard/types';
+import { ThinkingLoader } from '../components/shell/ThinkingLoader';
 
 export function VisualModel() {
   const { spaceId } = useParams();
@@ -253,6 +254,7 @@ export function VisualModel() {
           )}
 
           {status && <p className="text-sm text-[var(--muted-foreground)]">{status}</p>}
+          {busy && <ThinkingLoader label="AI is designing your board" />}
 
           <div className={`grid grid-cols-1 gap-4 ${editing ? 'xl:grid-cols-[minmax(0,1fr)_300px]' : ''}`}>
             <div id="exportable-space" className="w-full min-w-0">
