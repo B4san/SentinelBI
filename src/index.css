@@ -188,7 +188,33 @@ html[data-theme="dark"] .page-subtitle {
 }
 
 .dash-card {
-  background: var(--card);
+  background: color-mix(in oklab, var(--card) 88%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.dash-kpi-shell {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.dash-kpi-hero {
+  height: 100%;
+  border-radius: 1.35rem;
+  overflow: hidden;
+  background:
+    linear-gradient(145deg, color-mix(in oklab, var(--accent, #2563eb) 16%, transparent), color-mix(in oklab, var(--card) 82%, transparent) 58%),
+    var(--card);
+  border: 1px solid color-mix(in oklab, var(--accent, #2563eb) 22%, var(--border));
+  box-shadow: 0 18px 40px -28px color-mix(in oklab, var(--accent, #2563eb) 55%, transparent);
+}
+
+.arc-chart-host {
+  min-height: 0;
+}
+
+.arc-chart-host figure {
+  height: 100%;
 }
 
 .dash-card-flush {

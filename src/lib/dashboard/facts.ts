@@ -209,6 +209,7 @@ export function attachComputedFacts(spec: DashboardSpec, datasets: DashboardData
     ...spec,
     widgets: spec.widgets.map((widget) => {
       if (widget.type !== 'kpi') {
+        if (widget.type === 'chart' || widget.type === 'table') return widget;
         const dataset = resolveDataset(datasets, widget.datasetId);
         return dataset ? applySnap(dataset, widget) : widget;
       }
@@ -492,9 +493,13 @@ export function rewriteUnverifiedCopy(spec: DashboardSpec, datasets: DashboardDa
     subtitle: clean(spec.subtitle),
     narrative,
     widgets: spec.widgets.map((widget) => {
-      const title = clean(widget.title) || prettyTitleFromWidget(widget, sentences);
-      const subtitle = /compared on /i.test(widget.subtitle || '') ? undefined : clean(widget.subtitle);
       if (widget.type !== 'insight') {
+        const keepTitle = Boolean(widget.title)
+          && !/\d/.test(widget.title)
+          && !claimLooksFalse(widget.title)
+          && !isPlaceholderCopy(widget.title);
+        const title = keepTitle ? widget.title : (clean(widget.title) || encodingTitle(widget));
+        const subtitle = /compared on /i.test(widget.subtitle || '') ? undefined : clean(widget.subtitle);
         return { ...widget, title, subtitle };
       }
       const sourceTitle = editorialInsightTitle(widget.insight?.title || widget.title, clean(widget.insight?.text) || fallbackBody, sentences);
@@ -519,11 +524,15 @@ export function rewriteUnverifiedCopy(spec: DashboardSpec, datasets: DashboardDa
   };
 }
 
-function prettyTitleFromWidget(widget: DashboardWidget, sentences: string[]): string {
+function encodingTitle(widget: DashboardWidget): string {
   if (widget.type === 'section') return widget.title && !claimLooksFalse(widget.title) ? widget.title : 'Overview';
-  const safe = sentences.find((s) => s.length < 80) || sentences[0];
-  if (safe) return shortInsightTitle(safe, 56);
-  return widget.xField ? `${prettyField(widget.yField || 'Value')} by ${prettyField(widget.xField)}` : prettyField(widget.yField || widget.title);
+  if (widget.xField && (widget.yField || widget.measure)) {
+    const measure = widget.yField || (widget.measure && 'field' in widget.measure ? widget.measure.field : '') || widget.title;
+    return `${prettyField(measure)} by ${prettyField(widget.xField)}`;
+  }
+  if (widget.type === 'table') return 'Detail';
+  if (widget.type === 'kpi') return prettyField(widget.yField || widget.title || 'Metric');
+  return prettyField(widget.yField || 'Chart');
 }
 
 function claimLooksFalse(text: string): boolean {

@@ -115,6 +115,12 @@ export interface Space {
     forecasts: string;
     recommendations: string;
     governance: string;
+    source?: 'ai' | 'fallback';
+    fallbackReason?: string;
+    error?: string;
+    generatedBy?: string;
+    generatedAt?: string;
+    markdown?: string;
   };
   // Policies Engine Configuration
   policies?: {

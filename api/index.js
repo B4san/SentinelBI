@@ -1184,6 +1184,50 @@ var COMPONENT_CATALOG = [
     example: '{"type":"kpi","componentId":"sbi.kpi-drilldown","layout":{"x":0,"y":0,"w":4,"h":3},"title":"APAC revenue","measure":{"field":"revenue","agg":"sum","format":"currency"},"filter":{"field":"region","op":"equals","value":"APAC"}}',
     interactions: ["drill"],
     kind: "custom"
+  },
+  {
+    id: "arc.filter-toolbar",
+    description: "Arc filter toolbar with add-filter menu",
+    when: "The canvas always mounts this for live filters. Do not emit as a widget; pick chart/kpi/table ids instead.",
+    encodings: ["control"],
+    min: { w: 12, h: 1 },
+    max: { w: 12, h: 2 },
+    example: '{"type":"section","componentId":"arc.filter-toolbar","title":"Filters"}',
+    interactions: ["filter"],
+    kind: "control"
+  },
+  {
+    id: "arc.chip-group",
+    description: "Facet chip group for a dimension slicer",
+    when: "Slicing a board by a low-cardinality dimension. The renderer mounts chips from the dataset; you still pick chart encodings.",
+    encodings: ["dimension values"],
+    min: { w: 4, h: 1 },
+    max: { w: 12, h: 2 },
+    example: '{"type":"section","componentId":"arc.chip-group","title":"Region"}',
+    interactions: ["filter"],
+    kind: "control"
+  },
+  {
+    id: "planes.segmented-control",
+    description: "Planes segmented control (period compare)",
+    when: "Switch actual vs previous-period vs previous-year. Mounted on the canvas.",
+    encodings: ["none"],
+    min: { w: 4, h: 1 },
+    max: { w: 6, h: 2 },
+    example: '{"type":"section","componentId":"planes.segmented-control","title":"Compare"}',
+    interactions: ["period-compare"],
+    kind: "control"
+  },
+  {
+    id: "arc.badge",
+    description: "Arc badge for filter chips and status",
+    when: "Call out an active filter or polarity on a KPI. Renderer applies badges automatically.",
+    encodings: ["label"],
+    min: { w: 2, h: 1 },
+    max: { w: 4, h: 2 },
+    example: '{"type":"kpi","componentId":"arc.badge","title":"On track"}',
+    interactions: [],
+    kind: "control"
   }
 ];
 function catalogPromptBlock() {
@@ -1210,8 +1254,8 @@ function nearestComponent(id, type, chartType) {
   }
   if (id) {
     const exact = COMPONENT_CATALOG.find((c) => c.id === id);
-    if (exact) return exact;
-    const fuzzy = COMPONENT_CATALOG.find((c) => id.includes(c.id.split(".")[1] || c.id) || c.id.includes(id));
+    if (exact && exact.kind !== "control") return exact;
+    const fuzzy = COMPONENT_CATALOG.find((c) => c.kind !== "control" && (id.includes(c.id.split(".")[1] || c.id) || c.id.includes(id)));
     if (fuzzy) return fuzzy;
   }
   if (type === "kpi") return COMPONENT_CATALOG.find((c) => c.id === "arc.metric-card");
@@ -1766,6 +1810,7 @@ function attachComputedFacts(spec, datasets) {
     ...spec,
     widgets: spec.widgets.map((widget) => {
       if (widget.type !== "kpi") {
+        if (widget.type === "chart" || widget.type === "table") return widget;
         const dataset2 = resolveDataset(datasets, widget.datasetId);
         return dataset2 ? applySnap(dataset2, widget) : widget;
       }
@@ -2008,9 +2053,10 @@ function rewriteUnverifiedCopy(spec, datasets) {
     subtitle: clean(spec.subtitle),
     narrative,
     widgets: spec.widgets.map((widget) => {
-      const title = clean(widget.title) || prettyTitleFromWidget(widget, sentences);
-      const subtitle = /compared on /i.test(widget.subtitle || "") ? void 0 : clean(widget.subtitle);
       if (widget.type !== "insight") {
+        const keepTitle = Boolean(widget.title) && !/\d/.test(widget.title) && !claimLooksFalse(widget.title) && !isPlaceholderCopy(widget.title);
+        const title = keepTitle ? widget.title : clean(widget.title) || encodingTitle(widget);
+        const subtitle = /compared on /i.test(widget.subtitle || "") ? void 0 : clean(widget.subtitle);
         return { ...widget, title, subtitle };
       }
       const sourceTitle = editorialInsightTitle(widget.insight?.title || widget.title, clean(widget.insight?.text) || fallbackBody, sentences);
@@ -2032,11 +2078,15 @@ function rewriteUnverifiedCopy(spec, datasets) {
     })
   };
 }
-function prettyTitleFromWidget(widget, sentences) {
+function encodingTitle(widget) {
   if (widget.type === "section") return widget.title && !claimLooksFalse(widget.title) ? widget.title : "Overview";
-  const safe = sentences.find((s) => s.length < 80) || sentences[0];
-  if (safe) return shortInsightTitle(safe, 56);
-  return widget.xField ? `${prettyField(widget.yField || "Value")} by ${prettyField(widget.xField)}` : prettyField(widget.yField || widget.title);
+  if (widget.xField && (widget.yField || widget.measure)) {
+    const measure = widget.yField || (widget.measure && "field" in widget.measure ? widget.measure.field : "") || widget.title;
+    return `${prettyField(measure)} by ${prettyField(widget.xField)}`;
+  }
+  if (widget.type === "table") return "Detail";
+  if (widget.type === "kpi") return prettyField(widget.yField || widget.title || "Metric");
+  return prettyField(widget.yField || "Chart");
 }
 function claimLooksFalse(text) {
   return /accelerat|compressing margins|holding steady|42%/.test(text);
@@ -2343,7 +2393,7 @@ function dropDuplicateEncodings(spec, datasets) {
 }
 function finalizeDashboardSpec(spec, datasets, opts = {}) {
   const repaired = repairCatalogWidgets(spec, datasets);
-  const unique = dropLowInformationCharts(dropDuplicateEncodings(repaired, datasets), datasets);
+  const unique = opts.keepCuts ? dropDuplicateEncodings(repaired, datasets) : dropLowInformationCharts(dropDuplicateEncodings(repaired, datasets), datasets);
   const packed = packDashboardLayout(unique, datasets);
   const computed = attachComputedFacts(packed, datasets);
   const verified = opts.verifyCopy === false ? computed : rewriteUnverifiedCopy(computed, datasets);
@@ -2998,6 +3048,259 @@ function mockedAiSpec(datasets) {
   };
 }
 
+// src/lib/DataTruthEngine.ts
+function computeDataTruth(data) {
+  if (!data || data.length === 0) {
+    return {
+      rowCount: 0,
+      columnCount: 0,
+      nullCount: 0,
+      anomalyCount: 0,
+      completenessScore: 0,
+      numericSummary: {},
+      categoricalSummary: {},
+      dateSummary: {},
+      typeConfidence: {},
+      dataQualityScore: 0,
+      datasetFingerprint: "empty",
+      topDimensions: [],
+      topMeasures: [],
+      outlierSummary: {}
+    };
+  }
+  const columns = Object.keys(data[0]);
+  const stats = {
+    rowCount: data.length,
+    columnCount: columns.length,
+    nullCount: 0,
+    anomalyCount: 0,
+    completenessScore: 100,
+    numericSummary: {},
+    categoricalSummary: {},
+    dateSummary: {},
+    typeConfidence: {},
+    dataQualityScore: 100,
+    datasetFingerprint: `fps_${data.length}_${columns.length}`,
+    topDimensions: [],
+    topMeasures: [],
+    outlierSummary: {}
+  };
+  let totalCells = data.length * columns.length;
+  let totalNulls = 0;
+  columns.forEach((col) => {
+    let isNumeric = true;
+    let nullCount = 0;
+    for (let i = 0; i < Math.min(data.length, 50); i++) {
+      const val = data[i][col];
+      if (val == null || val === "") {
+        nullCount++;
+        continue;
+      }
+      if (isNaN(Number(val))) {
+        isNumeric = false;
+        break;
+      }
+    }
+    if (nullCount > data.length * 0.2) {
+      stats.anomalyCount++;
+    }
+    totalNulls += nullCount;
+    if (isNumeric) {
+      stats.topMeasures.push(col);
+      let sum = 0;
+      let min = Infinity;
+      let max = -Infinity;
+      let validCount = 0;
+      data.forEach((row) => {
+        const val = Number(row[col]);
+        if (!isNaN(val)) {
+          sum += val;
+          if (val < min) min = val;
+          if (val > max) max = val;
+          validCount++;
+        }
+      });
+      stats.numericSummary[col] = {
+        sum,
+        min: validCount > 0 ? min : 0,
+        max: validCount > 0 ? max : 0,
+        avg: validCount > 0 ? sum / validCount : 0
+      };
+    } else {
+      stats.topDimensions.push(col);
+      const counts = {};
+      data.forEach((row) => {
+        const val = String(row[col] ?? "");
+        if (val) counts[val] = (counts[val] || 0) + 1;
+      });
+      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([val, count]) => ({ value: val, count }));
+      stats.categoricalSummary[col] = {
+        uniqueCount: sorted.length,
+        topValues: sorted.slice(0, 5)
+      };
+    }
+  });
+  stats.nullCount = totalNulls;
+  stats.completenessScore = totalCells > 0 ? Math.round((totalCells - totalNulls) / totalCells * 100) : 0;
+  stats.dataQualityScore = Math.max(0, stats.completenessScore - stats.anomalyCount * 5);
+  return stats;
+}
+
+// src/lib/dashboard/prompt.ts
+var ARC_DESIGN_GUIDE = `Arc composition (Power BI-grade or better \u2014 never a grid of identical grey cards):
+- The renderer mounts real Arc / Planes / Space UI components: MetricCard + AnimatedCounter, Sparkline (area, scrubbable), Gauge (270\xB0 radial), BarChart (rounded growing bars + average line), LineChart (monotone + gradient area), BrushChart (focus+context), DonutChart (gapped arcs), Treemap, SlopeChart, WaffleChart, SortableDataTable, ChipGroup, FilterToolbar, SegmentedControl, Badge.
+- Pick componentId ONLY from the catalog. Hero KPIs use arc.metric-card (role=hero, h>=4) so they get glass/gradient + sparkline. Attainment uses arc.gauge. Tiny trends use arc.sparkline.
+- Distinctive chart styling is required: rounded bars, annotated average, compare overlays as dashed series, donuts with a centre total, gauges with thresholds. Do not emit a generic "bar chart" when a slope, waffle, bullet, or brush is the better question.
+- One hero insight backed by a computed fact. 3\u20134 KPI cards with sparklines and real measures (including derived ratios like AOV, weighted margin, opex vs budget). No filler unique-counts.
+- Match the chart to the question: trend \u2192 line/area/brush with compare overlay; part-to-whole \u2192 donut/treemap/waffle only if \u22646 parts AND shares differ; ranking \u2192 sorted bars with data labels; distribution \u2192 scatter; variance vs target \u2192 bullet-variance; many groups over time \u2192 small multiples; period change \u2192 slope chart.
+- Avoid 3 near-equal bars or a donut of equal thirds \u2014 pick a more informative cut (another dimension, a trend, a ranking).
+- No duplicated widgets or titles. Sentence-case titles. Never raw field names (use Gross margin, EBITDA, Avg session duration).
+- NEVER state numbers yourself. Emit encodings only; the server computes and verifies every KPI, delta, and insight sentence.
+- Fill a 12-column grid. Rows sum to w=12. Vary opening by archetype. Adjacent charts use different types.
+- polarity required on KPIs: higher-is-better vs lower-is-better.
+- Use series[] for overlays (line|bar|area|dashed|target).`;
+var EXAMPLE_SPECS = {
+  editorial: {
+    version: 1,
+    title: "Pricing briefing",
+    archetype: "editorial",
+    widgets: [
+      { type: "section", title: "Overview", layout: { x: 0, y: 0, w: 12, h: 2 } },
+      { type: "insight", role: "featured", title: "Key finding", layout: { x: 0, y: 2, w: 5, h: 3 }, insight: { title: "Key finding", text: "Server will replace this with a computed fact.", tone: "neutral" } },
+      { type: "chart", title: "Revenue trend", role: "hero", componentId: "arc.brush-chart", chartType: "area", layout: { x: 5, y: 2, w: 7, h: 6 }, xField: "order_date", yField: "revenue", measure: { field: "revenue", agg: "sum", format: "currency" }, compare: "previous-period" },
+      { type: "kpi", title: "Gross margin", componentId: "arc.metric-card", layout: { x: 0, y: 5, w: 5, h: 3 }, measure: { kind: "weighted", numerator: { field: "gross_margin", agg: "avg" }, denominator: { field: "revenue", agg: "sum" }, format: "percent" }, polarity: "higher-is-better" },
+      { type: "kpi", title: "AOV", componentId: "arc.metric-card", layout: { x: 0, y: 8, w: 4, h: 2 }, measure: { kind: "ratio", numerator: { field: "revenue", agg: "sum" }, denominator: { field: "revenue", agg: "count" }, format: "currency" } },
+      { type: "kpi", title: "Discount rate", componentId: "arc.metric-card", layout: { x: 4, y: 8, w: 4, h: 2 }, measure: { kind: "weighted", numerator: { field: "discount_rate", agg: "avg" }, denominator: { field: "revenue", agg: "sum" }, format: "percent" }, polarity: "lower-is-better" },
+      { type: "kpi", title: "Revenue", componentId: "arc.metric-card", layout: { x: 8, y: 8, w: 4, h: 2 }, measure: { field: "revenue", agg: "sum", format: "currency" } },
+      { type: "chart", title: "Revenue by region", componentId: "arc.bar-chart", chartType: "bar", layout: { x: 0, y: 10, w: 6, h: 5 }, xField: "region", yField: "revenue" },
+      { type: "chart", title: "Revenue share by channel", componentId: "arc.donut-chart", chartType: "donut", layout: { x: 6, y: 10, w: 6, h: 5 }, xField: "channel", yField: "revenue" },
+      { type: "table", title: "Region \xD7 channel by revenue", componentId: "arc.sortable-data-table", layout: { x: 0, y: 15, w: 12, h: 6 }, table: { groupBy: ["region", "channel"], sort: { field: "revenue", dir: "desc" }, limit: 8, measures: [{ field: "revenue", agg: "sum", format: "currency" }] } }
+    ]
+  },
+  "command-center": {
+    version: 1,
+    title: "Operations command",
+    archetype: "command-center",
+    widgets: [
+      { type: "chart", title: "Revenue trend", role: "hero", componentId: "arc.line-chart", chartType: "area", layout: { x: 0, y: 0, w: 8, h: 7 }, xField: "month", yField: "revenue", compare: "previous-year" },
+      { type: "kpi", title: "Opex vs budget", componentId: "arc.metric-card", layout: { x: 8, y: 0, w: 4, h: 2 }, measure: { kind: "difference", numerator: { field: "opex", agg: "sum" }, denominator: { field: "budget_opex", agg: "sum" }, format: "currency" }, polarity: "lower-is-better" },
+      { type: "kpi", title: "EBITDA margin", componentId: "arc.metric-card", layout: { x: 8, y: 2, w: 4, h: 2 }, measure: { kind: "ratio", numerator: { field: "ebitda", agg: "sum" }, denominator: { field: "revenue", agg: "sum" }, format: "percent" } },
+      { type: "kpi", title: "DSO", componentId: "arc.metric-card", layout: { x: 8, y: 4, w: 4, h: 3 }, yField: "dso_days", aggregation: "avg" },
+      { type: "chart", title: "Opex vs budget", componentId: "sbi.bullet-variance", layout: { x: 0, y: 7, w: 6, h: 5 }, xField: "business_unit", yField: "opex", targetField: "budget_opex", series: [{ field: "opex", style: "bar" }, { field: "budget_opex", style: "target" }] },
+      { type: "chart", title: "Revenue mix", componentId: "arc.treemap", chartType: "treemap", layout: { x: 6, y: 7, w: 6, h: 5 }, xField: "cost_center", yField: "revenue" },
+      { type: "chart", title: "Revenue change by unit", componentId: "arc.slope-chart", layout: { x: 0, y: 12, w: 6, h: 5 }, xField: "business_unit", yField: "revenue" },
+      { type: "chart", title: "Revenue by month", componentId: "sbi.small-multiples", layout: { x: 6, y: 12, w: 6, h: 5 }, xField: "month", yField: "revenue", groupField: "business_unit" },
+      { type: "table", title: "Unit \xD7 cost center", componentId: "arc.sortable-data-table", layout: { x: 0, y: 17, w: 12, h: 6 }, table: { groupBy: ["business_unit", "cost_center"], sort: { field: "revenue", dir: "desc" }, limit: 8, measures: [{ field: "revenue", agg: "sum", format: "currency" }, { field: "opex", agg: "sum", format: "currency" }] } },
+      { type: "insight", role: "strip", title: "Key finding", layout: { x: 0, y: 23, w: 12, h: 2 }, insight: { text: "Server will replace this with a computed fact." } }
+    ]
+  },
+  sales: {
+    version: 1,
+    title: "Northstar revenue",
+    archetype: "hero-kpi-rail",
+    widgets: [
+      { type: "kpi", title: "Revenue", role: "hero", componentId: "arc.metric-card", layout: { x: 0, y: 0, w: 7, h: 4 }, measure: { field: "revenue", agg: "sum", format: "currency" }, polarity: "higher-is-better" },
+      { type: "kpi", title: "Gross margin", componentId: "arc.gauge", layout: { x: 7, y: 0, w: 5, h: 4 }, measure: { kind: "weighted", numerator: { field: "gross_margin", agg: "avg" }, denominator: { field: "revenue", agg: "sum" }, format: "percent" } },
+      { type: "chart", title: "Revenue trend", role: "hero", componentId: "arc.brush-chart", chartType: "area", layout: { x: 0, y: 4, w: 12, h: 6 }, xField: "order_date", yField: "revenue", compare: "previous-period" },
+      { type: "chart", title: "Revenue by region", componentId: "arc.bar-chart", chartType: "bar", layout: { x: 0, y: 10, w: 6, h: 5 }, xField: "region", yField: "revenue" },
+      { type: "chart", title: "Channel mix", componentId: "arc.donut-chart", chartType: "donut", layout: { x: 6, y: 10, w: 6, h: 5 }, xField: "channel", yField: "revenue" },
+      { type: "table", title: "Region \xD7 product", componentId: "arc.sortable-data-table", layout: { x: 0, y: 15, w: 12, h: 6 }, table: { groupBy: ["region", "product"], sort: { field: "revenue", dir: "desc" }, limit: 8, measures: [{ field: "revenue", agg: "sum", format: "currency" }] } }
+    ]
+  },
+  web: {
+    version: 1,
+    title: "Atlas acquisition",
+    archetype: "funnel-flow",
+    widgets: [
+      { type: "chart", title: "Sessions", role: "hero", componentId: "arc.line-chart", chartType: "area", layout: { x: 0, y: 0, w: 12, h: 6 }, xField: "date", yField: "sessions" },
+      { type: "kpi", title: "Bounce rate", componentId: "arc.sparkline", layout: { x: 0, y: 6, w: 4, h: 3 }, measure: { kind: "weighted", numerator: { field: "bounce_rate", agg: "avg" }, denominator: { field: "sessions", agg: "sum" }, format: "percent" }, polarity: "lower-is-better" },
+      { type: "kpi", title: "Conversion", componentId: "arc.gauge", layout: { x: 4, y: 6, w: 4, h: 3 }, measure: { kind: "ratio", numerator: { field: "conversions", agg: "sum" }, denominator: { field: "sessions", agg: "sum" }, format: "percent" } },
+      { type: "kpi", title: "Ad spend", componentId: "arc.metric-card", layout: { x: 8, y: 6, w: 4, h: 3 }, measure: { field: "ad_spend", agg: "sum", format: "currency" }, polarity: "lower-is-better" },
+      { type: "chart", title: "Sessions by channel", componentId: "arc.waffle-chart", layout: { x: 0, y: 9, w: 6, h: 5 }, xField: "channel", yField: "sessions" },
+      { type: "chart", title: "Conversion by device", componentId: "arc.bar-chart", chartType: "bar", layout: { x: 6, y: 9, w: 6, h: 5 }, xField: "device", yField: "conversions" }
+    ]
+  },
+  finance: {
+    version: 1,
+    title: "Finance operations",
+    archetype: "command-center",
+    widgets: [
+      { type: "chart", title: "Revenue", role: "hero", componentId: "arc.line-chart", chartType: "area", layout: { x: 0, y: 0, w: 8, h: 6 }, xField: "month", yField: "revenue" },
+      { type: "kpi", title: "EBITDA margin", componentId: "arc.gauge", layout: { x: 8, y: 0, w: 4, h: 3 }, measure: { kind: "ratio", numerator: { field: "ebitda", agg: "sum" }, denominator: { field: "revenue", agg: "sum" }, format: "percent" } },
+      { type: "kpi", title: "Opex vs budget", componentId: "arc.metric-card", layout: { x: 8, y: 3, w: 4, h: 3 }, measure: { kind: "difference", numerator: { field: "opex", agg: "sum" }, denominator: { field: "budget_opex", agg: "sum" }, format: "currency" }, polarity: "lower-is-better" },
+      { type: "chart", title: "Opex vs budget", componentId: "sbi.bullet-variance", layout: { x: 0, y: 6, w: 6, h: 5 }, xField: "business_unit", yField: "opex", targetField: "budget_opex", series: [{ field: "opex", style: "bar" }, { field: "budget_opex", style: "target" }] },
+      { type: "chart", title: "Revenue change by unit", componentId: "arc.slope-chart", layout: { x: 6, y: 6, w: 6, h: 5 }, xField: "business_unit", yField: "revenue" },
+      { type: "table", title: "Unit \xD7 cost center", componentId: "arc.sortable-data-table", layout: { x: 0, y: 11, w: 12, h: 6 }, table: { groupBy: ["business_unit", "cost_center"], sort: { field: "revenue", dir: "desc" }, limit: 8, measures: [{ field: "revenue", agg: "sum", format: "currency" }, { field: "opex", agg: "sum", format: "currency" }] } }
+    ]
+  }
+};
+function summarizeDatasets(datasets) {
+  if (!datasets.length) return "No datasets available.";
+  return datasets.map((ds) => {
+    const truth = computeDataTruth(ds.data || []);
+    const fields = classifyFields(ds);
+    const findings = analyzeDataset(ds).slice(0, 4);
+    const cats = fields.dimensions.map((col) => {
+      const stat = truth.categoricalSummary[col];
+      return stat ? `${col} (${stat.uniqueCount}: ${stat.topValues.slice(0, 4).map((v) => v.value).join(", ")})` : col;
+    });
+    const derived = proposeDerivedMeasures(ds).map((m) => m.title).join(", ") || "none";
+    return `Dataset ${ds.id} "${ds.name}" rows=${truth.rowCount}
+Measures: ${fields.measures.join(", ") || "(none)"}
+Dimensions: ${cats.join("; ") || "(none)"}
+Time: ${fields.time.join(", ") || "(none)"}
+Derived candidates: ${derived}
+Findings (refine, do not invent numbers): ${findings.map((f) => f.title).join("; ") || "(none)"}`;
+  }).join("\n\n");
+}
+var ARCHETYPE_BRIEF = {
+  "hero-kpi-rail": "Open with one oversized hero KPI (w=6\u20137, h=4) plus 2\u20133 mixed supporting metrics \u2014 never four equal tiles. Then insight strip + full-width trend.",
+  editorial: "Open with a featured insight (w=5, h=3) beside a hero chart (w=7, h=6). KPIs AFTER the story.",
+  "command-center": "Chart-first: hero trend w=8 h=7 with a KPI sidebar w=4. Then diagnostics and a table.",
+  "story-arc": "Section headline, hero trend, insight, then 2\u20133 KPIs, then a table.",
+  "split-insight": "Featured finding w=4 on the left, hero chart on the right, then KPIs.",
+  "metric-mosaic": "Varied KPI sizes (6\xD73, 3\xD73, 4\xD72) \u2014 never eight identical 3\xD72 tiles \u2014 then one working chart.",
+  comparison: "Split A/B header: two large KPIs w=6 h=3 with roles compare-a/compare-b, then two comparison charts.",
+  "funnel-flow": "Full-width trend first, then three diagnostic charts, KPIs last."
+};
+function buildDashboardPrompt(opts) {
+  const seed = opts.seed || makeSeed([opts.intent, opts.title, opts.widgetId, Date.now()]);
+  const rng = createRng(seed);
+  const archetype = opts.preferredArchetype || pick(rng, LAYOUT_ARCHETYPES);
+  const mode = opts.mode || "light";
+  const paletteHint = pick(rng, palettesForMode(mode).length ? palettesForMode(mode) : PALETTES);
+  const scope = opts.widgetId ? `Regenerate ONLY widget id "${opts.widgetId}". Return the full dashboard JSON with that widget replaced.` : opts.existingJson ? "Modify the existing dashboard according to the instruction. Return a complete replacement spec." : "Create a brand-new dashboard. Opening must match the archetype brief.";
+  const examples = archetype === "command-center" ? EXAMPLE_SPECS.finance : archetype === "funnel-flow" ? EXAMPLE_SPECS.web : archetype === "hero-kpi-rail" ? EXAMPLE_SPECS.sales : EXAMPLE_SPECS.editorial;
+  const prompt = `You are SentinelBI's Visual Systems designer. Return STRICT JSON (no markdown) for an Arc dashboard.
+
+USER INTENT: ${opts.intent || opts.instruction || "Surface the most useful operating picture."}
+TITLE LOCK: ${opts.title || "(compose a short sentence-case title if empty \u2014 the server may overwrite it with the user title)"}
+APP MODE: ${mode}. Palette hint: ${paletteHint.id}. theme.palette.background="transparent".
+ARCHETYPE: ${archetype}. ${ARCHETYPE_BRIEF[archetype]}
+SEED: ${seed}
+${scope}
+${opts.instruction ? `Instruction: ${opts.instruction}` : ""}
+
+${ARC_DESIGN_GUIDE}
+
+COMPONENT CATALOG:
+${catalogPromptBlock()}
+
+EXAMPLE SPEC (different archetype than a clone of this; vary fields to THIS dataset):
+${JSON.stringify(examples)}
+
+DATA:
+${summarizeDatasets(opts.datasets)}
+
+${opts.existingJson ? `CURRENT SPEC:
+${opts.existingJson}
+` : ""}
+
+Return JSON: {version,id,title,subtitle,intent,archetype:"${archetype}",seed:${seed},theme:{palette:{id:"${paletteHint.id}",mode:"${mode}",background:"transparent",surface,text,muted,accent,accentSoft,border,chart},fontFamily:"font-sans",headingFont:"font-grotesk",radius:"rounded-2xl",density},narrative:{headline,body},widgets:[{id,type,title,role,layout,chartType,datasetId,xField,yField,aggregation,componentId,measure,series,table,polarity,color,kpi,insight}]}.
+Use exact column names from DATA. Dataset id must match. Field "${prettyField("revenue")}" is a label, not a column.`;
+  return { prompt, seed, archetype };
+}
+
 // src/lib/sample-data/finance.ts
 var finance_default = "month,business_unit,cost_center,revenue,cogs,opex,budget_opex,ebitda,headcount,dso_days\n2024-01-01,Cloud,R&D,481305,158769,139730,141558,182806,36,31\n2024-01-01,Cloud,GTM,444534,128966,130214,125458,185354,33,38\n2024-01-01,Cloud,G&A,545762,177636,116568,122393,251558,38,39\n2024-01-01,Apps,R&D,269826,102570,77958,81808,89298,25,30\n2024-01-01,Apps,GTM,285406,113873,86109,77299,85424,23,33\n2024-01-01,Apps,G&A,254918,101740,58709,59741,94469,20,33\n2024-01-01,Services,R&D,277868,117738,79737,83370,80393,20,35\n2024-01-01,Services,GTM,262991,108287,82825,74759,71879,21,38\n2024-01-01,Services,G&A,260529,99461,52634,54325,108434,26,34\n2024-01-01,Hardware,R&D,182226,99056,86675,62422,-3505,23,57\n2024-01-01,Hardware,GTM,190243,106114,86692,63415,-2563,24,49\n2024-01-01,Hardware,G&A,157268,83381,59105,42593,14782,22,58\n2024-02-01,Cloud,R&D,568083,175487,151677,152976,240919,31,32\n2024-02-01,Cloud,GTM,481936,155817,135728,128737,190391,35,31\n2024-02-01,Cloud,G&A,449179,130530,95904,102134,222745,31,32\n2024-02-01,Apps,R&D,290939,120783,77903,79345,92253,23,39\n2024-02-01,Apps,GTM,290674,113553,84564,78147,92557,26,40\n2024-02-01,Apps,G&A,257614,106659,54701,57783,96254,20,28\n2024-02-01,Services,R&D,237897,91930,61202,64470,84765,22,33\n2024-02-01,Services,GTM,276055,118140,88649,82881,69266,25,29\n2024-02-01,Services,G&A,260876,107582,56203,60284,97091,21,29\n2024-02-01,Hardware,R&D,156910,85426,64258,44866,7226,20,55\n2024-02-01,Hardware,GTM,184448,101083,92504,67183,-9139,26,48\n2024-02-01,Hardware,G&A,168614,88956,55782,40580,23876,20,54\n2024-03-01,Cloud,R&D,501727,154721,145779,155952,201227,32,35\n2024-03-01,Cloud,GTM,604113,172984,176027,162068,255102,39,30\n2024-03-01,Cloud,G&A,605708,176843,122933,132805,305932,33,34\n2024-03-01,Apps,R&D,253006,101150,64725,66419,87131,25,30\n2024-03-01,Apps,GTM,250628,103666,72500,67601,74462,22,32\n2024-03-01,Apps,G&A,271075,110590,58358,60871,102127,19,37\n2024-03-01,Services,R&D,248284,102288,63386,66453,82610,21,37\n2024-03-01,Services,GTM,303241,121181,92710,85403,89350,26,29\n2024-03-01,Services,G&A,290699,114492,60501,62147,115706,19,34\n2024-03-01,Hardware,R&D,185969,104191,82133,58632,-355,25,49\n2024-03-01,Hardware,GTM,189811,104510,88674,63726,-3373,24,56\n2024-03-01,Hardware,G&A,167594,88266,56521,39605,22807,19,47\n2024-04-01,Cloud,R&D,536691,162937,146095,151515,227659,35,40\n2024-04-01,Cloud,GTM,594427,194052,183137,172746,217238,37,30\n2024-04-01,Cloud,G&A,521209,160928,108585,112707,251696,34,34\n2024-04-01,Apps,R&D,235720,97530,68533,69976,69657,22,32\n2024-04-01,Apps,GTM,237237,100221,70665,63702,66351,22,33\n2024-04-01,Apps,G&A,246327,94759,56148,60244,95420,22,34\n2024-04-01,Services,R&D,258960,101929,67012,72443,90019,21,39\n2024-04-01,Services,GTM,305843,131084,88399,80533,86360,24,38\n2024-04-01,Services,G&A,232637,97573,54523,55059,80541,23,36\n2024-04-01,Hardware,R&D,201765,111733,91707,63375,-1675,22,52\n2024-04-01,Hardware,GTM,171497,89938,80695,59533,864,24,56\n2024-04-01,Hardware,G&A,159678,89204,53068,37120,17406,27,48\n2024-05-01,Cloud,R&D,581568,171787,150562,158558,259219,34,34\n2024-05-01,Cloud,GTM,477654,144298,146418,134082,186938,33,31\n2024-05-01,Cloud,G&A,491414,160535,105761,114366,225118,36,30\n2024-05-01,Apps,R&D,257970,105513,74728,79214,77729,24,38\n2024-05-01,Apps,GTM,292373,118040,91880,86270,82453,22,37\n2024-05-01,Apps,G&A,271796,114043,60204,60277,97549,26,36\n2024-05-01,Services,R&D,250928,103924,65701,69554,81303,25,32\n2024-05-01,Services,GTM,307583,127206,96868,93422,83509,21,28\n2024-05-01,Services,G&A,305689,121989,64862,67534,118838,24,28\n2024-05-01,Hardware,R&D,200850,105026,93797,68273,2027,25,53\n2024-05-01,Hardware,GTM,186844,98896,94148,67036,-6200,22,51\n2024-05-01,Hardware,G&A,188792,99893,65205,45604,23694,21,46\n2024-06-01,Cloud,R&D,472181,148292,125806,128255,198083,32,33\n2024-06-01,Cloud,GTM,608348,196904,168772,155812,242672,35,40\n2024-06-01,Cloud,G&A,614008,197461,139622,145347,276925,32,40\n2024-06-01,Apps,R&D,246524,96823,69865,75178,79836,27,32\n2024-06-01,Apps,GTM,278140,115280,79388,76182,83472,22,29\n2024-06-01,Apps,G&A,282390,115737,61413,65024,105240,21,40\n2024-06-01,Services,R&D,253193,104855,66417,66590,81921,22,37\n2024-06-01,Services,GTM,282834,110949,88416,81384,83469,23,30\n2024-06-01,Services,G&A,311766,119156,69309,72165,123301,22,28\n2024-06-01,Hardware,R&D,209031,117118,96503,67010,-4590,28,48\n2024-06-01,Hardware,GTM,197208,104176,94876,67769,-1844,22,50\n2024-06-01,Hardware,G&A,198744,113243,71249,48834,14252,20,52\n2024-07-01,Cloud,R&D,484109,158086,132388,135683,193635,37,29\n2024-07-01,Cloud,GTM,562248,181233,177021,161667,203994,34,31\n2024-07-01,Cloud,G&A,618874,183423,135516,143569,299935,39,30\n2024-07-01,Apps,R&D,238016,92444,67682,72501,77890,23,38\n2024-07-01,Apps,GTM,244980,103770,69145,64456,72065,23,33\n2024-07-01,Apps,G&A,317931,128000,73739,77078,116192,26,38\n2024-07-01,Services,R&D,303235,125204,85889,87360,92142,25,35\n2024-07-01,Services,GTM,272160,112129,80205,73994,79826,28,32\n2024-07-01,Services,G&A,277327,106378,64012,66343,106937,22,38\n2024-07-01,Hardware,R&D,175064,94684,76612,53474,3768,24,58\n2024-07-01,Hardware,GTM,174201,94625,86032,61992,-6456,24,49\n2024-07-01,Hardware,G&A,221578,125918,76895,53095,18765,28,57\n2024-08-01,Cloud,R&D,579896,172041,169066,179966,238789,36,35\n2024-08-01,Cloud,GTM,625938,185917,190231,171996,249790,35,33\n2024-08-01,Cloud,G&A,586104,188062,125636,126052,272406,34,38\n2024-08-01,Apps,R&D,240782,102275,70883,75354,67624,26,29\n2024-08-01,Apps,GTM,259769,105609,77197,72788,76963,26,36\n2024-08-01,Apps,G&A,276354,110909,63635,66130,101810,27,29\n2024-08-01,Services,R&D,261948,100324,68103,71725,93521,22,37\n2024-08-01,Services,GTM,320854,137331,94261,84442,89262,27,34\n2024-08-01,Services,G&A,320642,132207,66649,71907,121786,23,35\n2024-08-01,Hardware,R&D,197324,106076,82174,56577,9074,23,51\n2024-08-01,Hardware,GTM,173195,97601,79562,54852,-3968,29,52\n2024-08-01,Hardware,G&A,216763,114010,72998,52777,29755,26,55\n2024-09-01,Cloud,R&D,512922,153111,132828,140559,226983,40,38\n2024-09-01,Cloud,GTM,620729,179697,194367,174304,246665,40,28\n2024-09-01,Cloud,G&A,569677,185083,129773,131712,254821,40,34\n2024-09-01,Apps,R&D,327539,132116,92807,96184,102616,25,30\n2024-09-01,Apps,GTM,248467,97681,76874,71138,73912,24,29\n2024-09-01,Apps,G&A,318008,127297,72043,73590,118668,22,39\n2024-09-01,Services,R&D,326897,139778,83881,88548,103238,25,28\n2024-09-01,Services,GTM,311632,118522,97597,90905,95513,28,39\n2024-09-01,Services,G&A,279623,112960,57778,60331,108885,27,34\n2024-09-01,Hardware,R&D,222083,125538,104251,73014,-7706,26,56\n2024-09-01,Hardware,GTM,193415,107934,96193,70344,-10712,22,57\n2024-09-01,Hardware,G&A,184192,100217,68100,47490,15875,29,50\n2024-10-01,Cloud,R&D,511832,144785,134922,135027,232125,36,40\n2024-10-01,Cloud,GTM,515541,148269,160218,150906,207054,39,30\n2024-10-01,Cloud,G&A,594818,175169,136916,139500,282733,40,34\n2024-10-01,Apps,R&D,285937,112597,75849,80993,97491,27,35\n2024-10-01,Apps,GTM,287522,120267,84912,81465,82343,29,39\n2024-10-01,Apps,G&A,330159,131128,74510,75113,124521,24,32\n2024-10-01,Services,R&D,310570,127654,78560,84344,104356,29,36\n2024-10-01,Services,GTM,288657,115001,84344,77904,89312,29,30\n2024-10-01,Services,G&A,292541,118719,68668,73109,105154,25,31\n2024-10-01,Hardware,R&D,188841,104362,80423,55910,4056,25,50\n2024-10-01,Hardware,GTM,226736,122391,107785,79124,-3440,27,55\n2024-10-01,Hardware,G&A,213826,115011,80954,57814,17861,27,53\n2024-11-01,Cloud,R&D,667021,198109,196500,211160,272412,35,36\n2024-11-01,Cloud,GTM,524402,160780,162527,148060,201095,38,35\n2024-11-01,Cloud,G&A,535165,171913,112448,116024,250804,41,36\n2024-11-01,Apps,R&D,278111,113264,72646,75269,92201,28,39\n2024-11-01,Apps,GTM,330496,140836,91402,85442,98258,26,34\n2024-11-01,Apps,G&A,300329,115246,62946,64216,122137,27,30\n2024-11-01,Services,R&D,295579,116028,77147,77016,102404,25,31\n2024-11-01,Services,GTM,262666,100889,82948,79931,78829,30,35\n2024-11-01,Services,G&A,309125,128366,67994,68135,112765,23,29\n2024-11-01,Hardware,R&D,174322,94537,73078,50868,6707,24,53\n2024-11-01,Hardware,GTM,207792,111003,105337,75076,-8548,30,49\n2024-11-01,Hardware,G&A,224666,118805,78397,55671,27464,22,49\n2024-12-01,Cloud,R&D,507761,156015,142609,150330,209137,37,39\n2024-12-01,Cloud,GTM,646772,193157,192536,182711,261079,39,39\n2024-12-01,Cloud,G&A,567109,172765,129763,131809,264581,38,36\n2024-12-01,Apps,R&D,290941,115886,80113,80867,94942,27,34\n2024-12-01,Apps,GTM,297357,127009,93106,87027,77242,23,39\n2024-12-01,Apps,G&A,256574,106413,60168,63728,89993,26,28\n2024-12-01,Services,R&D,301397,124489,79763,81332,97145,29,32\n2024-12-01,Services,GTM,251330,106239,71994,65568,73097,30,39\n2024-12-01,Services,G&A,303108,127691,61985,65654,113432,25,31\n2024-12-01,Hardware,R&D,228643,130112,99141,68894,-610,26,53\n2024-12-01,Hardware,GTM,224517,123537,105246,76810,-4266,30,57\n2024-12-01,Hardware,G&A,225326,127330,75670,52041,22326,28,48\n2025-01-01,Cloud,R&D,571813,185857,166004,168891,219952,35,29\n2025-01-01,Cloud,GTM,679732,197392,215407,205425,266933,39,38\n2025-01-01,Cloud,G&A,638538,196522,149294,153855,292722,35,37\n2025-01-01,Apps,R&D,336392,132716,95609,100380,108067,23,38\n2025-01-01,Apps,GTM,287001,117173,87233,79309,82595,29,36\n2025-01-01,Apps,G&A,276109,111796,56132,56316,108181,25,29\n2025-01-01,Services,R&D,313749,120815,87233,90619,105701,25,30\n2025-01-01,Services,GTM,305557,128976,91872,86913,84709,29,34\n2025-01-01,Services,G&A,259163,103429,59875,60539,95859,30,33\n2025-01-01,Hardware,R&D,188998,107011,78683,57930,3304,26,46\n2025-01-01,Hardware,GTM,205602,114051,96826,71062,-5275,29,50\n2025-01-01,Hardware,G&A,209539,108987,70146,50369,30406,24,48\n2025-02-01,Cloud,R&D,525343,150107,135432,137153,239804,37,30\n2025-02-01,Cloud,GTM,558540,166837,159808,153828,231895,43,33\n2025-02-01,Cloud,G&A,680822,215064,137419,139253,328339,41,34\n2025-02-01,Apps,R&D,287499,116287,80825,82733,90387,24,33\n2025-02-01,Apps,GTM,290423,115154,82813,75954,92456,31,30\n2025-02-01,Apps,G&A,297094,120002,64923,65784,112169,27,32\n2025-02-01,Services,R&D,344267,132846,92837,97595,118584,25,30\n2025-02-01,Services,GTM,340195,129282,103269,95767,107644,25,35\n2025-02-01,Services,G&A,277253,113098,61693,66580,102462,25,32\n2025-02-01,Hardware,R&D,219104,120513,90103,64578,8488,31,57\n2025-02-01,Hardware,GTM,231493,127273,114626,82296,-10406,24,53\n2025-02-01,Hardware,G&A,220339,125419,73213,52474,21707,24,48\n2025-03-01,Cloud,R&D,681277,191391,200849,205840,289037,36,39\n2025-03-01,Cloud,GTM,684894,222237,201457,189922,261200,43,39\n2025-03-01,Cloud,G&A,527289,157295,109880,112701,260114,42,36\n2025-03-01,Apps,R&D,324689,131098,94751,95086,98840,27,34\n2025-03-01,Apps,GTM,278312,118351,84949,81557,75012,28,31\n2025-03-01,Apps,G&A,265873,106296,55315,56386,104262,27,35\n2025-03-01,Services,R&D,340225,137322,98372,105616,104531,27,28\n2025-03-01,Services,GTM,301423,129462,93451,89002,78510,30,39\n2025-03-01,Services,G&A,347514,136175,78060,78454,133279,28,39\n2025-03-01,Hardware,R&D,235820,125553,104123,73554,6144,30,46\n2025-03-01,Hardware,GTM,191225,105837,88955,65598,-3567,24,55\n2025-03-01,Hardware,G&A,217247,118248,81086,55495,17913,24,49\n2025-04-01,Cloud,R&D,542273,159217,149291,160074,233765,42,37\n2025-04-01,Cloud,GTM,583731,189536,181365,174328,212830,37,36\n2025-04-01,Cloud,G&A,620569,200641,138081,144091,281847,39,37\n2025-04-01,Apps,R&D,288331,115090,79797,80278,93444,27,39\n2025-04-01,Apps,GTM,323167,130548,94319,87936,98300,26,34\n2025-04-01,Apps,G&A,276493,110635,64127,67559,101731,31,34\n2025-04-01,Services,R&D,301477,116562,87789,90746,97126,28,32\n2025-04-01,Services,GTM,327629,135109,104271,98915,88249,29,30\n2025-04-01,Services,G&A,323720,124253,66651,67907,132816,25,35\n2025-04-01,Hardware,R&D,243215,136573,100599,70214,6043,28,55\n2025-04-01,Hardware,GTM,202144,107808,91365,66737,2971,30,57\n2025-04-01,Hardware,G&A,241772,137071,90513,65197,14188,27,57\n2025-05-01,Cloud,R&D,657967,188532,168421,171031,301014,37,37\n2025-05-01,Cloud,GTM,602909,188365,168598,153264,245946,44,40\n2025-05-01,Cloud,G&A,590082,192512,136246,142625,261324,41,40\n2025-05-01,Apps,R&D,275035,115762,70749,75584,88524,27,37\n2025-05-01,Apps,GTM,293104,114596,81508,74612,97000,25,36\n2025-05-01,Apps,G&A,329360,128980,75633,75552,124747,26,29\n2025-05-01,Services,R&D,340801,134932,98427,102690,107442,29,32\n2025-05-01,Services,GTM,344725,131334,97729,92353,115662,29,33\n2025-05-01,Services,G&A,296451,122373,65369,65872,108709,30,29\n2025-05-01,Hardware,R&D,225160,121752,101437,71475,1971,25,57\n2025-05-01,Hardware,GTM,239196,129955,117987,84465,-8746,29,54\n2025-05-01,Hardware,G&A,194990,109055,65089,45167,20846,27,49\n2025-06-01,Cloud,R&D,711323,208966,182702,182941,319655,42,31\n2025-06-01,Cloud,GTM,677905,193278,215962,195868,268665,39,36\n2025-06-01,Cloud,G&A,617767,173384,136776,146626,307607,40,35\n2025-06-01,Apps,R&D,314296,123552,89960,97111,100784,33,34\n2025-06-01,Apps,GTM,307496,128931,91569,83545,86996,29,31\n2025-06-01,Apps,G&A,338984,144939,72462,73669,121583,27,38\n2025-06-01,Services,R&D,307518,126299,88504,92666,92715,30,35\n2025-06-01,Services,GTM,276181,118172,80208,71938,77801,32,30\n2025-06-01,Services,G&A,267269,110637,61307,65894,95325,27,39\n2025-06-01,Hardware,R&D,214021,112463,92042,63458,9516,29,49\n2025-06-01,Hardware,GTM,216529,122052,102505,75429,-8028,30,46\n2025-06-01,Hardware,G&A,239410,127666,81635,59315,30109,27,50\n2025-07-01,Cloud,R&D,581744,183420,166806,171703,231518,40,38\n2025-07-01,Cloud,GTM,691791,194315,199646,192334,297830,37,36\n2025-07-01,Cloud,G&A,670911,216491,152580,161746,301840,37,32\n2025-07-01,Apps,R&D,291782,111549,76973,79775,103260,32,29\n2025-07-01,Apps,GTM,301637,128392,96093,88947,77152,30,31\n2025-07-01,Apps,G&A,314396,123802,64727,68205,125867,30,38\n2025-07-01,Services,R&D,271528,105108,69410,70913,97010,30,30\n2025-07-01,Services,GTM,343351,135221,95987,92840,112143,30,30\n2025-07-01,Services,G&A,306558,120214,66483,70077,119861,26,38\n2025-07-01,Hardware,R&D,219877,120593,94318,68678,4966,28,52\n2025-07-01,Hardware,GTM,226263,123114,115345,82528,-12196,26,51\n2025-07-01,Hardware,G&A,228021,127198,75814,52874,25009,32,53\n2025-08-01,Cloud,R&D,575787,181236,159192,170443,235359,40,32\n2025-08-01,Cloud,GTM,630309,197330,188337,176713,244642,41,37\n2025-08-01,Cloud,G&A,705583,231726,163518,164103,310339,39,39\n2025-08-01,Apps,R&D,329244,139626,89304,94053,100314,31,38\n2025-08-01,Apps,GTM,361088,138162,109774,101703,113152,32,34\n2025-08-01,Apps,G&A,340973,137151,73799,75884,130023,29,35\n2025-08-01,Services,R&D,300463,126179,88018,92877,86266,28,30\n2025-08-01,Services,GTM,311988,125978,91866,83558,94144,27,32\n2025-08-01,Services,G&A,271999,105624,63651,68726,102724,34,36\n2025-08-01,Hardware,R&D,209274,109409,91982,65771,7883,27,54\n2025-08-01,Hardware,GTM,215500,118495,109369,76619,-12364,31,52\n2025-08-01,Hardware,G&A,213624,118451,75302,55140,19871,30,49\n2025-09-01,Cloud,R&D,570598,182810,146685,156244,241103,39,30\n2025-09-01,Cloud,GTM,709899,200719,216367,208313,292813,41,33\n2025-09-01,Cloud,G&A,556210,163826,128998,136375,263386,43,40\n2025-09-01,Apps,R&D,298505,127729,85510,88913,85266,31,33\n2025-09-01,Apps,GTM,332628,127695,104232,98206,100701,29,38\n2025-09-01,Apps,G&A,349335,144333,70422,71828,134580,28,31\n2025-09-01,Services,R&D,350058,142744,102132,107550,105182,28,29\n2025-09-01,Services,GTM,319818,121882,90465,86873,107471,31,35\n2025-09-01,Services,G&A,314318,125488,73659,75694,115171,26,33\n2025-09-01,Hardware,R&D,204180,106877,91472,64573,5831,34,47\n2025-09-01,Hardware,GTM,200467,112472,103822,75214,-15827,29,51\n2025-09-01,Hardware,G&A,239824,124865,82141,58875,32818,33,53\n2025-10-01,Cloud,R&D,729926,240093,202303,212502,287530,44,37\n2025-10-01,Cloud,GTM,695000,222044,222241,213582,250715,44,36\n2025-10-01,Cloud,G&A,661049,212841,153466,157038,294742,43,32\n2025-10-01,Apps,R&D,362457,148595,105740,111864,108122,30,34\n2025-10-01,Apps,GTM,321611,123050,101784,97698,96777,27,34\n2025-10-01,Apps,G&A,340585,131165,78928,82554,130492,32,32\n2025-10-01,Services,R&D,374002,157384,97117,104823,119501,29,35\n2025-10-01,Services,GTM,367995,143416,103265,96066,121314,32,30\n2025-10-01,Services,G&A,369321,147778,75800,76657,145743,31,30\n2025-10-01,Hardware,R&D,238908,130585,111330,76689,-3007,34,50\n2025-10-01,Hardware,GTM,244212,128248,119240,84361,-3276,29,49\n2025-10-01,Hardware,G&A,241844,128533,79143,58163,34168,27,47\n2025-11-01,Cloud,R&D,746687,233599,201956,202295,311132,45,33\n2025-11-01,Cloud,GTM,715932,214940,227653,211467,273339,39,37\n2025-11-01,Cloud,G&A,722314,218650,165402,175467,338262,39,32\n2025-11-01,Apps,R&D,346282,140004,92846,93768,113432,30,35\n2025-11-01,Apps,GTM,362074,138631,100027,94793,123416,33,34\n2025-11-01,Apps,G&A,310668,125253,72875,73570,112540,28,39\n2025-11-01,Services,R&D,372649,157343,95798,102857,119508,27,28\n2025-11-01,Services,GTM,355306,143797,102198,97703,109311,28,33\n2025-11-01,Services,G&A,340835,143377,76982,77108,120476,28,38\n2025-11-01,Hardware,R&D,233351,127712,104363,73446,1276,32,49\n2025-11-01,Hardware,GTM,249385,140291,129240,94889,-20146,34,49\n2025-11-01,Hardware,G&A,201892,114978,69988,49313,16926,33,49\n2025-12-01,Cloud,R&D,696243,195322,205056,216381,295865,41,30\n2025-12-01,Cloud,GTM,703927,208495,204466,187376,290966,40,33\n2025-12-01,Cloud,G&A,739190,228957,165725,168000,344508,42,29\n2025-12-01,Apps,R&D,347255,139560,99810,100351,107885,34,33\n2025-12-01,Apps,GTM,297492,114374,93543,85919,89575,29,37\n2025-12-01,Apps,G&A,350629,135098,76467,82178,139064,29,37\n2025-12-01,Services,R&D,376068,147581,106948,110692,121539,34,38\n2025-12-01,Services,GTM,295114,121206,87486,78876,86422,35,31\n2025-12-01,Services,G&A,325773,138089,70697,70527,116987,28,28\n2025-12-01,Hardware,R&D,259473,144064,111462,81996,3947,33,52\n2025-12-01,Hardware,GTM,242947,127597,123259,89912,-7909,35,55\n2025-12-01,Hardware,G&A,231852,123505,81287,57549,27060,30,50\n";
 
@@ -3139,6 +3442,415 @@ function createSampleSpace(kind = "sales") {
     visualInsights: [],
     savedDashboards: []
   };
+}
+
+// src/lib/dashboard/validate.ts
+var FONT_SET = new Set(FONT_FAMILIES);
+var RADIUS_SET = new Set(RADIUS_TOKENS);
+var ARCHETYPE_SET = new Set(LAYOUT_ARCHETYPES);
+var CHART_SET = new Set(CHART_TYPES);
+var WIDGET_SET = new Set(WIDGET_TYPES);
+var FILTER_SET = new Set(FILTER_OPS);
+var AGG_SET = new Set(AGGREGATIONS);
+function asString(value, fallback = "") {
+  if (value == null) return fallback;
+  return String(value);
+}
+function asNumber(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+function clamp(n, min, max) {
+  return Math.min(max, Math.max(min, n));
+}
+function isHexColor(value) {
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value);
+}
+function sanitizeGrid(raw, fallback) {
+  const rec = raw && typeof raw === "object" ? raw : {};
+  const w = clamp(Math.round(asNumber(rec.w, fallback.w)), 2, 12);
+  const h = clamp(Math.round(asNumber(rec.h, fallback.h)), 2, 16);
+  const x = clamp(Math.round(asNumber(rec.x, fallback.x)), 0, 12 - w);
+  const y = clamp(Math.round(asNumber(rec.y, fallback.y)), 0, 80);
+  return { x, y, w, h };
+}
+function sanitizePalette(raw, fallbackId) {
+  const base = getPalette(fallbackId);
+  if (!raw || typeof raw !== "object") return base;
+  const rec = raw;
+  const chart = Array.isArray(rec.chart) ? rec.chart.filter((c) => typeof c === "string" && isHexColor(c)) : [];
+  return {
+    id: asString(rec.id, base.id),
+    label: asString(rec.label, base.label),
+    mode: rec.mode === "dark" ? "dark" : "light",
+    background: asString(rec.background) === "transparent" || isHexColor(asString(rec.background)) ? asString(rec.background) : base.background,
+    surface: isHexColor(asString(rec.surface)) ? asString(rec.surface) : base.surface,
+    text: isHexColor(asString(rec.text)) ? asString(rec.text) : base.text,
+    muted: isHexColor(asString(rec.muted)) ? asString(rec.muted) : base.muted,
+    accent: isHexColor(asString(rec.accent)) ? asString(rec.accent) : base.accent,
+    accentSoft: isHexColor(asString(rec.accentSoft)) ? asString(rec.accentSoft) : base.accentSoft,
+    border: isHexColor(asString(rec.border)) ? asString(rec.border) : base.border,
+    chart: chart.length >= 3 ? chart.slice(0, 8) : base.chart
+  };
+}
+function sanitizeFilter(raw) {
+  if (!raw || typeof raw !== "object") return void 0;
+  const rec = raw;
+  const field = asString(rec.field || rec.filterField);
+  const value = asString(rec.value || rec.filterValue);
+  const op = asString(rec.op || rec.filterOp, "contains");
+  if (!field || !value) return void 0;
+  return {
+    field,
+    op: FILTER_SET.has(op) ? op : "contains",
+    value
+  };
+}
+var MEASURE_HINT = /rev|sales|amount|units|session|conversion|spend|cost|bounce|margin|opex|ebitda|headcount|cogs|discount/i;
+var DIM_HINT = /region|channel|device|product|segment|unit|center|dept|queue|landing|category|name/i;
+function shouldSwapAxes(xField, yField, chartType) {
+  if (!xField || !yField) return false;
+  if (chartType === "scatter" || chartType === "bubble") return false;
+  return MEASURE_HINT.test(xField) && DIM_HINT.test(yField) && !MEASURE_HINT.test(yField);
+}
+function sanitizeAgg(value, fallback = "sum") {
+  const raw = asString(value);
+  return AGG_SET.has(raw) ? raw : fallback;
+}
+function sanitizeMeasure(raw) {
+  if (!raw || typeof raw !== "object") return void 0;
+  const rec = raw;
+  const kind = asString(rec.kind);
+  if (kind === "ratio" || kind === "difference" || kind === "margin" || kind === "weighted") {
+    const num = rec.numerator && typeof rec.numerator === "object" ? rec.numerator : null;
+    const den = rec.denominator && typeof rec.denominator === "object" ? rec.denominator : null;
+    if (!num || !den || !asString(num.field) || !asString(den.field)) return void 0;
+    const measure = {
+      kind,
+      numerator: { field: asString(num.field), agg: sanitizeAgg(num.agg) },
+      denominator: { field: asString(den.field), agg: sanitizeAgg(den.agg) },
+      format: MEASURE_FORMATS.includes(asString(rec.format)) ? asString(rec.format) : void 0
+    };
+    if (isDegenerateRatio(measure)) return void 0;
+    return measure;
+  }
+  const field = asString(rec.field);
+  if (!field) return void 0;
+  return {
+    kind: "simple",
+    field,
+    agg: sanitizeAgg(rec.agg || rec.aggregation),
+    format: MEASURE_FORMATS.includes(asString(rec.format)) ? asString(rec.format) : void 0
+  };
+}
+function sanitizeSeries(raw) {
+  if (!Array.isArray(raw)) return void 0;
+  const series = raw.filter((item) => Boolean(item) && typeof item === "object").map((item) => ({
+    field: asString(item.field),
+    label: asString(item.label) || void 0,
+    style: ["line", "bar", "area", "dashed", "target"].includes(asString(item.style)) ? asString(item.style) : void 0,
+    color: isHexColor(asString(item.color)) ? asString(item.color) : void 0,
+    axis: asString(item.axis) === "right" ? "right" : asString(item.axis) === "left" ? "left" : void 0
+  })).filter((item) => item.field);
+  return series.length ? series : void 0;
+}
+function sanitizeTable(raw, title) {
+  const rec = raw && typeof raw === "object" ? raw : {};
+  const sortField = asString(rec.sort?.field || rec.sortField);
+  const top = title.match(/top\s+(\d+)/i);
+  const by = title.match(/by\s+([a-z0-9_ ]+)/i);
+  const limit = Number(rec.limit) || (top ? Number(top[1]) : void 0);
+  const field = sortField || (by ? by[1].trim().replace(/\s+/g, "_") : "");
+  const inferredGroup = inferGroupByFromTitle(title);
+  const groupBy = Array.isArray(rec.groupBy) && rec.groupBy.length ? rec.groupBy.map((c) => String(c)) : inferredGroup;
+  const measures = Array.isArray(rec.measures) ? rec.measures.filter((item) => Boolean(item) && typeof item === "object").map((item) => ({
+    field: asString(item.field),
+    agg: AGG_SET.has(asString(item.agg)) ? asString(item.agg) : "sum",
+    format: MEASURE_FORMATS.includes(asString(item.format)) ? asString(item.format) : void 0
+  })).filter((item) => item.field) : void 0;
+  const inferredMeasure = title.match(/by\s+(revenue|sales|sessions|conversions|opex|ebitda|units)/i);
+  const nextMeasures = measures && measures.length ? measures : inferredMeasure ? [{ field: inferredMeasure[1].toLowerCase(), agg: "sum" }] : void 0;
+  if (!field && !limit && !groupBy && !nextMeasures) return void 0;
+  return {
+    sort: field ? { field, dir: asString(rec.sort?.dir) === "asc" ? "asc" : "desc" } : void 0,
+    limit,
+    groupBy,
+    measures: nextMeasures
+  };
+}
+function inferGroupByFromTitle(title) {
+  const cross = title.match(/([A-Za-z][A-Za-z0-9_ ]+)\s*[×x]\s*([A-Za-z][A-Za-z0-9_ ]+)/i);
+  if (cross) {
+    return [slugField(cross[1]), slugField(cross[2])].filter(Boolean);
+  }
+  const by = title.match(/\bby\s+([a-z0-9_ /&×x]+)/i);
+  if (by && !/revenue|sales|amount|session|conversion|opex|ebitda|unit/i.test(by[1])) {
+    return by[1].split(/[/,&]| and /i).map(slugField).filter(Boolean);
+  }
+  return void 0;
+}
+function slugField(value) {
+  return value.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+}
+function defaultLayoutFor(type, index) {
+  if (type === "kpi") return { x: index % 4 * 3, y: Math.floor(index / 4) * 3, w: 3, h: 3 };
+  if (type === "insight" || type === "section") return { x: 0, y: index * 3, w: 12, h: 3 };
+  if (type === "table") return { x: 0, y: index * 6, w: 12, h: 6 };
+  return { x: index % 2 * 6, y: Math.floor(index / 2) * 6 + 3, w: 6, h: 6 };
+}
+function sanitizeWidget(raw, index, palette) {
+  const rec = raw && typeof raw === "object" ? raw : {};
+  const type = WIDGET_SET.has(asString(rec.type)) ? asString(rec.type) : inferWidgetType(rec);
+  const chartTypeRaw = asString(rec.chartType || rec.type);
+  const chartType = CHART_SET.has(chartTypeRaw) ? chartTypeRaw : type === "chart" ? "bar" : void 0;
+  const aggregation = AGG_SET.has(asString(rec.aggregation)) ? asString(rec.aggregation) : "sum";
+  const title = asString(rec.title || rec.label, type === "kpi" ? `Metric ${index + 1}` : `Widget ${index + 1}`);
+  let xField = asString(rec.xField || rec.xAxisField) || void 0;
+  let yField = asString(rec.yField || rec.yAxisField) || void 0;
+  if (shouldSwapAxes(xField, yField, chartType)) {
+    const tmp = xField;
+    xField = yField;
+    yField = tmp;
+  }
+  const kpiRec = rec.kpi && typeof rec.kpi === "object" ? rec.kpi : void 0;
+  const polarity = sanitizePolarity(rec.polarity || kpiRec?.polarity, asString(kpiRec?.field) || yField, title);
+  let measure = sanitizeMeasure(rec.measure);
+  if (measure && !isDerivedMeasure(measure)) {
+    yField = yField || measure.field;
+    if (measure.agg) rec.aggregation = measure.agg;
+  }
+  if (isDerivedMeasure(measure) && isDegenerateRatio(measure)) measure = void 0;
+  const aggregationNext = measure && !isDerivedMeasure(measure) && measure.agg ? measure.agg : aggregation;
+  if (type === "kpi" && (aggregationNext === "count" || !yField && !measure && !kpiRec?.field) && !looksLikeCountTitle(title)) {
+    const hinted = title.match(/\b(revenue|ebitda|opex|units|sessions|conversions|headcount|dso)\b/i);
+    if (hinted) yField = yField || hinted[1].toLowerCase();
+  }
+  const series = sanitizeSeries(rec.series);
+  const table = sanitizeTable(rec.table, title);
+  const compareRaw = asString(rec.compare);
+  const compare = compareRaw === "previous-year" || compareRaw === "prior-year" ? "previous-year" : compareRaw === "previous-period" || compareRaw === "prior-period" ? "previous-period" : void 0;
+  return {
+    id: asString(rec.id, `w-${index + 1}`),
+    type,
+    title,
+    subtitle: asString(rec.subtitle) || void 0,
+    sectionId: asString(rec.sectionId) || void 0,
+    layout: sanitizeGrid(rec.layout, defaultLayoutFor(type, index)),
+    chartType,
+    datasetId: asString(rec.datasetId) || void 0,
+    xField,
+    yField,
+    componentId: asString(rec.componentId) || void 0,
+    measure,
+    series,
+    table,
+    targetField: asString(rec.targetField) || void 0,
+    compare,
+    polarity,
+    groupField: asString(rec.groupField) || void 0,
+    sizeField: asString(rec.sizeField) || void 0,
+    role: ["hero", "support", "compare-a", "compare-b", "strip", "featured"].includes(
+      asString(rec.role)
+    ) ? asString(rec.role) : void 0,
+    color: isHexColor(asString(rec.color)) ? asString(rec.color) : palette.chart[index % palette.chart.length],
+    colors: Array.isArray(rec.colors) ? rec.colors.filter((c) => typeof c === "string" && isHexColor(c)) : void 0,
+    aggregation: aggregationNext,
+    filter: sanitizeFilter(rec.filter) || sanitizeFilter({
+      field: rec.filterField,
+      op: rec.filterOp,
+      value: rec.filterValue
+    }),
+    kpi: rec.kpi && typeof rec.kpi === "object" ? {
+      value: asString(rec.kpi.value, "\u2014"),
+      trend: asString(rec.kpi.trend) || void 0,
+      field: asString(rec.kpi.field) || (!isDerivedMeasure(measure) ? measure?.field : void 0) || yField,
+      aggregation: AGG_SET.has(asString(rec.kpi.aggregation)) ? asString(rec.kpi.aggregation) : (!isDerivedMeasure(measure) ? measure?.agg : void 0) || aggregationNext,
+      format: MEASURE_FORMATS.includes(
+        asString(rec.kpi.format)
+      ) ? asString(rec.kpi.format) : void 0,
+      delta: Number.isFinite(Number(rec.kpi.delta)) ? Number(rec.kpi.delta) : void 0,
+      sparkline: Array.isArray(rec.kpi.sparkline) ? rec.kpi.sparkline.map((n) => Number(n)).filter((n) => Number.isFinite(n)) : void 0,
+      polarity
+    } : type === "kpi" ? { value: asString(rec.value, "\u2014"), trend: asString(rec.trend) || void 0, polarity } : void 0,
+    insight: rec.insight && typeof rec.insight === "object" ? {
+      title: asString(rec.insight.title) || void 0,
+      text: asString(rec.insight.text),
+      tone: ["neutral", "positive", "warning"].includes(
+        asString(rec.insight.tone)
+      ) ? asString(rec.insight.tone) : "neutral"
+    } : type === "insight" ? { text: asString(rec.text || rec.description, "No insight available."), tone: "neutral" } : void 0,
+    columns: Array.isArray(rec.columns) ? rec.columns.map((c) => String(c)) : void 0
+  };
+}
+function inferWidgetType(rec) {
+  if (rec.kpi || rec.value) return "kpi";
+  if (rec.insight || rec.text) return "insight";
+  if (rec.xAxisField || rec.yAxisField || rec.chartType) return "chart";
+  if (WIDGET_SET.has(asString(rec.type))) return asString(rec.type);
+  return "chart";
+}
+function isLegacyLayout(raw) {
+  if (!raw || typeof raw !== "object") return false;
+  const rec = raw;
+  if (rec.version === DASHBOARD_SPEC_VERSION && Array.isArray(rec.widgets)) return false;
+  return Array.isArray(rec.kpis) || Array.isArray(rec.charts);
+}
+function fromLegacyLayout(raw, seed = 1) {
+  const palette = getPalette(raw.globalBg?.includes("0") ? "midnight" : "ocean");
+  const widgets = [];
+  (raw.kpis || []).forEach((kpi, i) => {
+    widgets.push(
+      sanitizeWidget(
+        {
+          id: `legacy-kpi-${i}`,
+          type: "kpi",
+          title: kpi.label,
+          kpi: { value: String(kpi.value ?? "\u2014"), trend: kpi.trend },
+          layout: { x: i % 4 * 3, y: 0, w: 3, h: 3 }
+        },
+        i,
+        palette
+      )
+    );
+  });
+  (raw.charts || []).forEach((chart, i) => {
+    widgets.push(
+      sanitizeWidget(
+        {
+          id: chart.id || `legacy-chart-${i}`,
+          type: "chart",
+          title: chart.title,
+          chartType: chart.type,
+          datasetId: chart.datasetId,
+          xField: chart.xAxisField,
+          yField: chart.yAxisField,
+          groupField: chart.groupField,
+          sizeField: chart.sizeField,
+          color: chart.color,
+          filter: {
+            field: chart.filterField,
+            op: chart.filterOp,
+            value: chart.filterValue
+          },
+          layout: { x: i % 2 * 6, y: 3 + Math.floor(i / 2) * 6, w: 6, h: 6 }
+        },
+        (raw.kpis?.length || 0) + i,
+        palette
+      )
+    );
+  });
+  return {
+    version: DASHBOARD_SPEC_VERSION,
+    id: `legacy-${seed}`,
+    title: raw.title || "Intelligence Dashboard",
+    archetype: "command-center",
+    seed,
+    theme: {
+      palette: { ...palette, background: isHexColor(asString(raw.globalBg)) ? asString(raw.globalBg) : palette.background },
+      fontFamily: FONT_SET.has(asString(raw.fontFamily)) ? asString(raw.fontFamily) : "font-sans",
+      radius: RADIUS_SET.has(asString(raw.borderRadius)) ? asString(raw.borderRadius) : "rounded-3xl",
+      density: "comfortable"
+    },
+    sections: [],
+    widgets
+  };
+}
+function validateDashboardSpec(raw, fallback) {
+  if (isLegacyLayout(raw)) {
+    return fromLegacyLayout(raw, fallback?.seed ?? 1);
+  }
+  const rec = raw && typeof raw === "object" ? raw : {};
+  const themeRec = rec.theme && typeof rec.theme === "object" ? rec.theme : {};
+  const palette = sanitizePalette(themeRec.palette || rec.palette, fallback?.theme?.palette?.id);
+  const archetype = ARCHETYPE_SET.has(asString(rec.archetype)) ? asString(rec.archetype) : fallback?.archetype || "command-center";
+  const widgetsRaw = Array.isArray(rec.widgets) ? rec.widgets : [];
+  const widgets = widgetsRaw.map((w, i) => sanitizeWidget(w, i, palette));
+  const sections = Array.isArray(rec.sections) ? rec.sections.filter((s) => Boolean(s) && typeof s === "object").map((s, i) => ({
+    id: asString(s.id, `section-${i + 1}`),
+    title: asString(s.title) || void 0,
+    description: asString(s.description) || void 0
+  })) : [];
+  const narrative = rec.narrative && typeof rec.narrative === "object" ? {
+    headline: asString(rec.narrative.headline),
+    body: asString(rec.narrative.body)
+  } : void 0;
+  return {
+    version: DASHBOARD_SPEC_VERSION,
+    id: asString(rec.id, fallback?.id || `dash-${Date.now()}`),
+    title: asString(rec.title, fallback?.title || "Intelligence Dashboard"),
+    subtitle: asString(rec.subtitle, fallback?.subtitle) || void 0,
+    intent: asString(rec.intent, fallback?.intent) || void 0,
+    archetype,
+    seed: asNumber(rec.seed, fallback?.seed ?? 1),
+    theme: {
+      palette,
+      fontFamily: FONT_SET.has(asString(themeRec.fontFamily)) ? asString(themeRec.fontFamily) : fallback?.theme?.fontFamily || "font-sans",
+      headingFont: FONT_SET.has(asString(themeRec.headingFont)) ? asString(themeRec.headingFont) : void 0,
+      radius: RADIUS_SET.has(asString(themeRec.radius || rec.borderRadius)) ? asString(themeRec.radius || rec.borderRadius) : fallback?.theme?.radius || "rounded-3xl",
+      density: ["compact", "comfortable", "airy"].includes(asString(themeRec.density)) ? asString(themeRec.density) : "comfortable"
+    },
+    narrative: narrative?.headline || narrative?.body ? narrative : fallback?.narrative,
+    sections,
+    widgets: widgets.length > 0 ? widgets : fallback?.widgets || [],
+    filters: Array.isArray(rec.filters) ? rec.filters.map(sanitizeFilter).filter((f) => Boolean(f)) : void 0,
+    generatedBy: asString(rec.generatedBy, fallback?.generatedBy) || void 0
+  };
+}
+function scanBalancedObject(text, start) {
+  let depth = 0;
+  let inStr = false;
+  let escape = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inStr) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') {
+      inStr = true;
+      continue;
+    }
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+function extractJsonObjects(text) {
+  const cleaned = String(text || "").replace(/```json\s*/gi, "").replace(/```/g, "").trim();
+  const found = [];
+  try {
+    found.push(JSON.parse(cleaned));
+  } catch {
+  }
+  for (let i = 0; i < cleaned.length; i += 1) {
+    if (cleaned[i] !== "{") continue;
+    const end = scanBalancedObject(cleaned, i);
+    if (end < 0) continue;
+    try {
+      found.push(JSON.parse(cleaned.slice(i, end + 1)));
+    } catch {
+    }
+    i = end;
+  }
+  return found;
+}
+function extractJsonObject(text) {
+  const candidates = extractJsonObjects(text);
+  if (candidates.length === 0) throw new Error("Model did not return valid JSON.");
+  const withWidgets = candidates.filter((item) => item && typeof item === "object" && Array.isArray(item.widgets));
+  const pool = withWidgets.length ? withWidgets : candidates;
+  return pool.sort((a, b) => JSON.stringify(b).length - JSON.stringify(a).length)[0];
 }
 
 // src/lib/ai/geminiAdapter.ts
@@ -4180,626 +4892,6 @@ var DASHBOARD_JSON_SCHEMA = {
   }
 };
 
-// src/lib/DataTruthEngine.ts
-function computeDataTruth(data) {
-  if (!data || data.length === 0) {
-    return {
-      rowCount: 0,
-      columnCount: 0,
-      nullCount: 0,
-      anomalyCount: 0,
-      completenessScore: 0,
-      numericSummary: {},
-      categoricalSummary: {},
-      dateSummary: {},
-      typeConfidence: {},
-      dataQualityScore: 0,
-      datasetFingerprint: "empty",
-      topDimensions: [],
-      topMeasures: [],
-      outlierSummary: {}
-    };
-  }
-  const columns = Object.keys(data[0]);
-  const stats = {
-    rowCount: data.length,
-    columnCount: columns.length,
-    nullCount: 0,
-    anomalyCount: 0,
-    completenessScore: 100,
-    numericSummary: {},
-    categoricalSummary: {},
-    dateSummary: {},
-    typeConfidence: {},
-    dataQualityScore: 100,
-    datasetFingerprint: `fps_${data.length}_${columns.length}`,
-    topDimensions: [],
-    topMeasures: [],
-    outlierSummary: {}
-  };
-  let totalCells = data.length * columns.length;
-  let totalNulls = 0;
-  columns.forEach((col) => {
-    let isNumeric = true;
-    let nullCount = 0;
-    for (let i = 0; i < Math.min(data.length, 50); i++) {
-      const val = data[i][col];
-      if (val == null || val === "") {
-        nullCount++;
-        continue;
-      }
-      if (isNaN(Number(val))) {
-        isNumeric = false;
-        break;
-      }
-    }
-    if (nullCount > data.length * 0.2) {
-      stats.anomalyCount++;
-    }
-    totalNulls += nullCount;
-    if (isNumeric) {
-      stats.topMeasures.push(col);
-      let sum = 0;
-      let min = Infinity;
-      let max = -Infinity;
-      let validCount = 0;
-      data.forEach((row) => {
-        const val = Number(row[col]);
-        if (!isNaN(val)) {
-          sum += val;
-          if (val < min) min = val;
-          if (val > max) max = val;
-          validCount++;
-        }
-      });
-      stats.numericSummary[col] = {
-        sum,
-        min: validCount > 0 ? min : 0,
-        max: validCount > 0 ? max : 0,
-        avg: validCount > 0 ? sum / validCount : 0
-      };
-    } else {
-      stats.topDimensions.push(col);
-      const counts = {};
-      data.forEach((row) => {
-        const val = String(row[col] ?? "");
-        if (val) counts[val] = (counts[val] || 0) + 1;
-      });
-      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([val, count]) => ({ value: val, count }));
-      stats.categoricalSummary[col] = {
-        uniqueCount: sorted.length,
-        topValues: sorted.slice(0, 5)
-      };
-    }
-  });
-  stats.nullCount = totalNulls;
-  stats.completenessScore = totalCells > 0 ? Math.round((totalCells - totalNulls) / totalCells * 100) : 0;
-  stats.dataQualityScore = Math.max(0, stats.completenessScore - stats.anomalyCount * 5);
-  return stats;
-}
-
-// src/lib/dashboard/prompt.ts
-var ARC_DESIGN_GUIDE = `Arc composition (Power BI-grade or better):
-- One hero insight backed by a computed fact. 3\u20134 KPI cards with sparklines and real measures (including derived ratios like AOV, weighted margin, opex vs budget). No filler unique-counts.
-- Match the chart to the question: trend \u2192 line/area with compare overlay; part-to-whole \u2192 donut/treemap/waffle only if \u22646 parts AND shares differ; ranking \u2192 sorted bars with data labels; distribution \u2192 scatter or ridgeline; variance vs target \u2192 bullet-variance; many groups over time \u2192 small multiples; period change \u2192 slope chart.
-- Avoid 3 near-equal bars or a donut of equal thirds \u2014 pick a more informative cut (another dimension, a trend, a ranking).
-- No duplicated widgets or titles. Sentence-case titles. Never raw field names (use Gross margin, EBITDA, Avg session duration).
-- NEVER state numbers yourself. Emit encodings only; the server computes and verifies every KPI, delta, and insight sentence.
-- Fill a 12-column grid. Rows sum to w=12. Vary opening by archetype. Adjacent charts use different types.
-- polarity required on KPIs: higher-is-better vs lower-is-better.
-- Pick componentId ONLY from the catalog. Use series[] for overlays (line|bar|area|dashed|target).`;
-var EXAMPLE_SPECS = {
-  editorial: {
-    version: 1,
-    title: "Pricing briefing",
-    archetype: "editorial",
-    widgets: [
-      { type: "section", title: "Overview", layout: { x: 0, y: 0, w: 12, h: 2 } },
-      { type: "insight", role: "featured", title: "Key finding", layout: { x: 0, y: 2, w: 5, h: 3 }, insight: { title: "Key finding", text: "Server will replace this with a computed fact.", tone: "neutral" } },
-      { type: "chart", title: "Revenue trend", role: "hero", componentId: "arc.brush-chart", chartType: "area", layout: { x: 5, y: 2, w: 7, h: 6 }, xField: "order_date", yField: "revenue", measure: { field: "revenue", agg: "sum", format: "currency" }, compare: "previous-period" },
-      { type: "kpi", title: "Gross margin", componentId: "arc.metric-card", layout: { x: 0, y: 5, w: 5, h: 3 }, measure: { kind: "weighted", numerator: { field: "gross_margin", agg: "avg" }, denominator: { field: "revenue", agg: "sum" }, format: "percent" }, polarity: "higher-is-better" },
-      { type: "kpi", title: "AOV", componentId: "arc.metric-card", layout: { x: 0, y: 8, w: 4, h: 2 }, measure: { kind: "ratio", numerator: { field: "revenue", agg: "sum" }, denominator: { field: "revenue", agg: "count" }, format: "currency" } },
-      { type: "kpi", title: "Discount rate", componentId: "arc.metric-card", layout: { x: 4, y: 8, w: 4, h: 2 }, measure: { kind: "weighted", numerator: { field: "discount_rate", agg: "avg" }, denominator: { field: "revenue", agg: "sum" }, format: "percent" }, polarity: "lower-is-better" },
-      { type: "kpi", title: "Revenue", componentId: "arc.metric-card", layout: { x: 8, y: 8, w: 4, h: 2 }, measure: { field: "revenue", agg: "sum", format: "currency" } },
-      { type: "chart", title: "Revenue by region", componentId: "arc.bar-chart", chartType: "bar", layout: { x: 0, y: 10, w: 6, h: 5 }, xField: "region", yField: "revenue" },
-      { type: "chart", title: "Revenue share by channel", componentId: "arc.donut-chart", chartType: "donut", layout: { x: 6, y: 10, w: 6, h: 5 }, xField: "channel", yField: "revenue" },
-      { type: "table", title: "Region \xD7 channel by revenue", componentId: "arc.sortable-data-table", layout: { x: 0, y: 15, w: 12, h: 6 }, table: { groupBy: ["region", "channel"], sort: { field: "revenue", dir: "desc" }, limit: 8, measures: [{ field: "revenue", agg: "sum", format: "currency" }] } }
-    ]
-  },
-  "command-center": {
-    version: 1,
-    title: "Operations command",
-    archetype: "command-center",
-    widgets: [
-      { type: "chart", title: "Revenue trend", role: "hero", componentId: "arc.line-chart", chartType: "area", layout: { x: 0, y: 0, w: 8, h: 7 }, xField: "month", yField: "revenue", compare: "previous-year" },
-      { type: "kpi", title: "Opex vs budget", componentId: "arc.metric-card", layout: { x: 8, y: 0, w: 4, h: 2 }, measure: { kind: "difference", numerator: { field: "opex", agg: "sum" }, denominator: { field: "budget_opex", agg: "sum" }, format: "currency" }, polarity: "lower-is-better" },
-      { type: "kpi", title: "EBITDA margin", componentId: "arc.metric-card", layout: { x: 8, y: 2, w: 4, h: 2 }, measure: { kind: "ratio", numerator: { field: "ebitda", agg: "sum" }, denominator: { field: "revenue", agg: "sum" }, format: "percent" } },
-      { type: "kpi", title: "DSO", componentId: "arc.metric-card", layout: { x: 8, y: 4, w: 4, h: 3 }, yField: "dso_days", aggregation: "avg" },
-      { type: "chart", title: "Opex vs budget", componentId: "sbi.bullet-variance", layout: { x: 0, y: 7, w: 6, h: 5 }, xField: "business_unit", yField: "opex", targetField: "budget_opex", series: [{ field: "opex", style: "bar" }, { field: "budget_opex", style: "target" }] },
-      { type: "chart", title: "Revenue mix", componentId: "arc.treemap", chartType: "treemap", layout: { x: 6, y: 7, w: 6, h: 5 }, xField: "cost_center", yField: "revenue" },
-      { type: "chart", title: "Revenue change by unit", componentId: "arc.slope-chart", layout: { x: 0, y: 12, w: 6, h: 5 }, xField: "business_unit", yField: "revenue" },
-      { type: "chart", title: "Revenue by month", componentId: "sbi.small-multiples", layout: { x: 6, y: 12, w: 6, h: 5 }, xField: "month", yField: "revenue", groupField: "business_unit" },
-      { type: "table", title: "Unit \xD7 cost center", componentId: "arc.sortable-data-table", layout: { x: 0, y: 17, w: 12, h: 6 }, table: { groupBy: ["business_unit", "cost_center"], sort: { field: "revenue", dir: "desc" }, limit: 8, measures: [{ field: "revenue", agg: "sum", format: "currency" }, { field: "opex", agg: "sum", format: "currency" }] } },
-      { type: "insight", role: "strip", title: "Key finding", layout: { x: 0, y: 23, w: 12, h: 2 }, insight: { text: "Server will replace this with a computed fact." } }
-    ]
-  }
-};
-function summarizeDatasets(datasets) {
-  if (!datasets.length) return "No datasets available.";
-  return datasets.map((ds) => {
-    const truth = computeDataTruth(ds.data || []);
-    const fields = classifyFields(ds);
-    const findings = analyzeDataset(ds).slice(0, 4);
-    const cats = fields.dimensions.map((col) => {
-      const stat = truth.categoricalSummary[col];
-      return stat ? `${col} (${stat.uniqueCount}: ${stat.topValues.slice(0, 4).map((v) => v.value).join(", ")})` : col;
-    });
-    const derived = proposeDerivedMeasures(ds).map((m) => m.title).join(", ") || "none";
-    return `Dataset ${ds.id} "${ds.name}" rows=${truth.rowCount}
-Measures: ${fields.measures.join(", ") || "(none)"}
-Dimensions: ${cats.join("; ") || "(none)"}
-Time: ${fields.time.join(", ") || "(none)"}
-Derived candidates: ${derived}
-Findings (refine, do not invent numbers): ${findings.map((f) => f.title).join("; ") || "(none)"}`;
-  }).join("\n\n");
-}
-var ARCHETYPE_BRIEF = {
-  "hero-kpi-rail": "Open with one oversized hero KPI (w=6\u20137, h=4) plus 2\u20133 mixed supporting metrics \u2014 never four equal tiles. Then insight strip + full-width trend.",
-  editorial: "Open with a featured insight (w=5, h=3) beside a hero chart (w=7, h=6). KPIs AFTER the story.",
-  "command-center": "Chart-first: hero trend w=8 h=7 with a KPI sidebar w=4. Then diagnostics and a table.",
-  "story-arc": "Section headline, hero trend, insight, then 2\u20133 KPIs, then a table.",
-  "split-insight": "Featured finding w=4 on the left, hero chart on the right, then KPIs.",
-  "metric-mosaic": "Varied KPI sizes (6\xD73, 3\xD73, 4\xD72) \u2014 never eight identical 3\xD72 tiles \u2014 then one working chart.",
-  comparison: "Split A/B header: two large KPIs w=6 h=3 with roles compare-a/compare-b, then two comparison charts.",
-  "funnel-flow": "Full-width trend first, then three diagnostic charts, KPIs last."
-};
-function buildDashboardPrompt(opts) {
-  const seed = opts.seed || makeSeed([opts.intent, opts.title, opts.widgetId, Date.now()]);
-  const rng = createRng(seed);
-  const archetype = opts.preferredArchetype || pick(rng, LAYOUT_ARCHETYPES);
-  const mode = opts.mode || "light";
-  const paletteHint = pick(rng, palettesForMode(mode).length ? palettesForMode(mode) : PALETTES);
-  const scope = opts.widgetId ? `Regenerate ONLY widget id "${opts.widgetId}". Return the full dashboard JSON with that widget replaced.` : opts.existingJson ? "Modify the existing dashboard according to the instruction. Return a complete replacement spec." : "Create a brand-new dashboard. Opening must match the archetype brief.";
-  const examples = archetype === "command-center" ? EXAMPLE_SPECS["command-center"] : EXAMPLE_SPECS.editorial;
-  const prompt = `You are SentinelBI's Visual Systems designer. Return STRICT JSON (no markdown) for an Arc dashboard.
-
-USER INTENT: ${opts.intent || opts.instruction || "Surface the most useful operating picture."}
-TITLE LOCK: ${opts.title || "(compose a short sentence-case title if empty \u2014 the server may overwrite it with the user title)"}
-APP MODE: ${mode}. Palette hint: ${paletteHint.id}. theme.palette.background="transparent".
-ARCHETYPE: ${archetype}. ${ARCHETYPE_BRIEF[archetype]}
-SEED: ${seed}
-${scope}
-${opts.instruction ? `Instruction: ${opts.instruction}` : ""}
-
-${ARC_DESIGN_GUIDE}
-
-COMPONENT CATALOG:
-${catalogPromptBlock()}
-
-EXAMPLE SPEC (different archetype than a clone of this; vary fields to THIS dataset):
-${JSON.stringify(examples)}
-
-DATA:
-${summarizeDatasets(opts.datasets)}
-
-${opts.existingJson ? `CURRENT SPEC:
-${opts.existingJson}
-` : ""}
-
-Return JSON: {version,id,title,subtitle,intent,archetype:"${archetype}",seed:${seed},theme:{palette:{id:"${paletteHint.id}",mode:"${mode}",background:"transparent",surface,text,muted,accent,accentSoft,border,chart},fontFamily:"font-sans",headingFont:"font-grotesk",radius:"rounded-2xl",density},narrative:{headline,body},widgets:[{id,type,title,role,layout,chartType,datasetId,xField,yField,aggregation,componentId,measure,series,table,polarity,color,kpi,insight}]}.
-Use exact column names from DATA. Dataset id must match. Field "${prettyField("revenue")}" is a label, not a column.`;
-  return { prompt, seed, archetype };
-}
-
-// src/lib/dashboard/validate.ts
-var FONT_SET = new Set(FONT_FAMILIES);
-var RADIUS_SET = new Set(RADIUS_TOKENS);
-var ARCHETYPE_SET = new Set(LAYOUT_ARCHETYPES);
-var CHART_SET = new Set(CHART_TYPES);
-var WIDGET_SET = new Set(WIDGET_TYPES);
-var FILTER_SET = new Set(FILTER_OPS);
-var AGG_SET = new Set(AGGREGATIONS);
-function asString(value, fallback = "") {
-  if (value == null) return fallback;
-  return String(value);
-}
-function asNumber(value, fallback) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
-function clamp(n, min, max) {
-  return Math.min(max, Math.max(min, n));
-}
-function isHexColor(value) {
-  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value);
-}
-function sanitizeGrid(raw, fallback) {
-  const rec = raw && typeof raw === "object" ? raw : {};
-  const w = clamp(Math.round(asNumber(rec.w, fallback.w)), 2, 12);
-  const h = clamp(Math.round(asNumber(rec.h, fallback.h)), 2, 16);
-  const x = clamp(Math.round(asNumber(rec.x, fallback.x)), 0, 12 - w);
-  const y = clamp(Math.round(asNumber(rec.y, fallback.y)), 0, 80);
-  return { x, y, w, h };
-}
-function sanitizePalette(raw, fallbackId) {
-  const base = getPalette(fallbackId);
-  if (!raw || typeof raw !== "object") return base;
-  const rec = raw;
-  const chart = Array.isArray(rec.chart) ? rec.chart.filter((c) => typeof c === "string" && isHexColor(c)) : [];
-  return {
-    id: asString(rec.id, base.id),
-    label: asString(rec.label, base.label),
-    mode: rec.mode === "dark" ? "dark" : "light",
-    background: asString(rec.background) === "transparent" || isHexColor(asString(rec.background)) ? asString(rec.background) : base.background,
-    surface: isHexColor(asString(rec.surface)) ? asString(rec.surface) : base.surface,
-    text: isHexColor(asString(rec.text)) ? asString(rec.text) : base.text,
-    muted: isHexColor(asString(rec.muted)) ? asString(rec.muted) : base.muted,
-    accent: isHexColor(asString(rec.accent)) ? asString(rec.accent) : base.accent,
-    accentSoft: isHexColor(asString(rec.accentSoft)) ? asString(rec.accentSoft) : base.accentSoft,
-    border: isHexColor(asString(rec.border)) ? asString(rec.border) : base.border,
-    chart: chart.length >= 3 ? chart.slice(0, 8) : base.chart
-  };
-}
-function sanitizeFilter(raw) {
-  if (!raw || typeof raw !== "object") return void 0;
-  const rec = raw;
-  const field = asString(rec.field || rec.filterField);
-  const value = asString(rec.value || rec.filterValue);
-  const op = asString(rec.op || rec.filterOp, "contains");
-  if (!field || !value) return void 0;
-  return {
-    field,
-    op: FILTER_SET.has(op) ? op : "contains",
-    value
-  };
-}
-var MEASURE_HINT = /rev|sales|amount|units|session|conversion|spend|cost|bounce|margin|opex|ebitda|headcount|cogs|discount/i;
-var DIM_HINT = /region|channel|device|product|segment|unit|center|dept|queue|landing|category|name/i;
-function shouldSwapAxes(xField, yField, chartType) {
-  if (!xField || !yField) return false;
-  if (chartType === "scatter" || chartType === "bubble") return false;
-  return MEASURE_HINT.test(xField) && DIM_HINT.test(yField) && !MEASURE_HINT.test(yField);
-}
-function sanitizeAgg(value, fallback = "sum") {
-  const raw = asString(value);
-  return AGG_SET.has(raw) ? raw : fallback;
-}
-function sanitizeMeasure(raw) {
-  if (!raw || typeof raw !== "object") return void 0;
-  const rec = raw;
-  const kind = asString(rec.kind);
-  if (kind === "ratio" || kind === "difference" || kind === "margin" || kind === "weighted") {
-    const num = rec.numerator && typeof rec.numerator === "object" ? rec.numerator : null;
-    const den = rec.denominator && typeof rec.denominator === "object" ? rec.denominator : null;
-    if (!num || !den || !asString(num.field) || !asString(den.field)) return void 0;
-    const measure = {
-      kind,
-      numerator: { field: asString(num.field), agg: sanitizeAgg(num.agg) },
-      denominator: { field: asString(den.field), agg: sanitizeAgg(den.agg) },
-      format: MEASURE_FORMATS.includes(asString(rec.format)) ? asString(rec.format) : void 0
-    };
-    if (isDegenerateRatio(measure)) return void 0;
-    return measure;
-  }
-  const field = asString(rec.field);
-  if (!field) return void 0;
-  return {
-    kind: "simple",
-    field,
-    agg: sanitizeAgg(rec.agg || rec.aggregation),
-    format: MEASURE_FORMATS.includes(asString(rec.format)) ? asString(rec.format) : void 0
-  };
-}
-function sanitizeSeries(raw) {
-  if (!Array.isArray(raw)) return void 0;
-  const series = raw.filter((item) => Boolean(item) && typeof item === "object").map((item) => ({
-    field: asString(item.field),
-    label: asString(item.label) || void 0,
-    style: ["line", "bar", "area", "dashed", "target"].includes(asString(item.style)) ? asString(item.style) : void 0,
-    color: isHexColor(asString(item.color)) ? asString(item.color) : void 0,
-    axis: asString(item.axis) === "right" ? "right" : asString(item.axis) === "left" ? "left" : void 0
-  })).filter((item) => item.field);
-  return series.length ? series : void 0;
-}
-function sanitizeTable(raw, title) {
-  const rec = raw && typeof raw === "object" ? raw : {};
-  const sortField = asString(rec.sort?.field || rec.sortField);
-  const top = title.match(/top\s+(\d+)/i);
-  const by = title.match(/by\s+([a-z0-9_ ]+)/i);
-  const limit = Number(rec.limit) || (top ? Number(top[1]) : void 0);
-  const field = sortField || (by ? by[1].trim().replace(/\s+/g, "_") : "");
-  const inferredGroup = inferGroupByFromTitle(title);
-  const groupBy = Array.isArray(rec.groupBy) && rec.groupBy.length ? rec.groupBy.map((c) => String(c)) : inferredGroup;
-  const measures = Array.isArray(rec.measures) ? rec.measures.filter((item) => Boolean(item) && typeof item === "object").map((item) => ({
-    field: asString(item.field),
-    agg: AGG_SET.has(asString(item.agg)) ? asString(item.agg) : "sum",
-    format: MEASURE_FORMATS.includes(asString(item.format)) ? asString(item.format) : void 0
-  })).filter((item) => item.field) : void 0;
-  const inferredMeasure = title.match(/by\s+(revenue|sales|sessions|conversions|opex|ebitda|units)/i);
-  const nextMeasures = measures && measures.length ? measures : inferredMeasure ? [{ field: inferredMeasure[1].toLowerCase(), agg: "sum" }] : void 0;
-  if (!field && !limit && !groupBy && !nextMeasures) return void 0;
-  return {
-    sort: field ? { field, dir: asString(rec.sort?.dir) === "asc" ? "asc" : "desc" } : void 0,
-    limit,
-    groupBy,
-    measures: nextMeasures
-  };
-}
-function inferGroupByFromTitle(title) {
-  const cross = title.match(/([A-Za-z][A-Za-z0-9_ ]+)\s*[×x]\s*([A-Za-z][A-Za-z0-9_ ]+)/i);
-  if (cross) {
-    return [slugField(cross[1]), slugField(cross[2])].filter(Boolean);
-  }
-  const by = title.match(/\bby\s+([a-z0-9_ /&×x]+)/i);
-  if (by && !/revenue|sales|amount|session|conversion|opex|ebitda|unit/i.test(by[1])) {
-    return by[1].split(/[/,&]| and /i).map(slugField).filter(Boolean);
-  }
-  return void 0;
-}
-function slugField(value) {
-  return value.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
-}
-function defaultLayoutFor(type, index) {
-  if (type === "kpi") return { x: index % 4 * 3, y: Math.floor(index / 4) * 3, w: 3, h: 3 };
-  if (type === "insight" || type === "section") return { x: 0, y: index * 3, w: 12, h: 3 };
-  if (type === "table") return { x: 0, y: index * 6, w: 12, h: 6 };
-  return { x: index % 2 * 6, y: Math.floor(index / 2) * 6 + 3, w: 6, h: 6 };
-}
-function sanitizeWidget(raw, index, palette) {
-  const rec = raw && typeof raw === "object" ? raw : {};
-  const type = WIDGET_SET.has(asString(rec.type)) ? asString(rec.type) : inferWidgetType(rec);
-  const chartTypeRaw = asString(rec.chartType || rec.type);
-  const chartType = CHART_SET.has(chartTypeRaw) ? chartTypeRaw : type === "chart" ? "bar" : void 0;
-  const aggregation = AGG_SET.has(asString(rec.aggregation)) ? asString(rec.aggregation) : "sum";
-  const title = asString(rec.title || rec.label, type === "kpi" ? `Metric ${index + 1}` : `Widget ${index + 1}`);
-  let xField = asString(rec.xField || rec.xAxisField) || void 0;
-  let yField = asString(rec.yField || rec.yAxisField) || void 0;
-  if (shouldSwapAxes(xField, yField, chartType)) {
-    const tmp = xField;
-    xField = yField;
-    yField = tmp;
-  }
-  const kpiRec = rec.kpi && typeof rec.kpi === "object" ? rec.kpi : void 0;
-  const polarity = sanitizePolarity(rec.polarity || kpiRec?.polarity, asString(kpiRec?.field) || yField, title);
-  let measure = sanitizeMeasure(rec.measure);
-  if (measure && !isDerivedMeasure(measure)) {
-    yField = yField || measure.field;
-    if (measure.agg) rec.aggregation = measure.agg;
-  }
-  if (isDerivedMeasure(measure) && isDegenerateRatio(measure)) measure = void 0;
-  const aggregationNext = measure && !isDerivedMeasure(measure) && measure.agg ? measure.agg : aggregation;
-  if (type === "kpi" && (aggregationNext === "count" || !yField && !measure && !kpiRec?.field) && !looksLikeCountTitle(title)) {
-    const hinted = title.match(/\b(revenue|ebitda|opex|units|sessions|conversions|headcount|dso)\b/i);
-    if (hinted) yField = yField || hinted[1].toLowerCase();
-  }
-  const series = sanitizeSeries(rec.series);
-  const table = sanitizeTable(rec.table, title);
-  const compareRaw = asString(rec.compare);
-  const compare = compareRaw === "previous-year" || compareRaw === "prior-year" ? "previous-year" : compareRaw === "previous-period" || compareRaw === "prior-period" ? "previous-period" : void 0;
-  return {
-    id: asString(rec.id, `w-${index + 1}`),
-    type,
-    title,
-    subtitle: asString(rec.subtitle) || void 0,
-    sectionId: asString(rec.sectionId) || void 0,
-    layout: sanitizeGrid(rec.layout, defaultLayoutFor(type, index)),
-    chartType,
-    datasetId: asString(rec.datasetId) || void 0,
-    xField,
-    yField,
-    componentId: asString(rec.componentId) || void 0,
-    measure,
-    series,
-    table,
-    targetField: asString(rec.targetField) || void 0,
-    compare,
-    polarity,
-    groupField: asString(rec.groupField) || void 0,
-    sizeField: asString(rec.sizeField) || void 0,
-    role: ["hero", "support", "compare-a", "compare-b", "strip", "featured"].includes(
-      asString(rec.role)
-    ) ? asString(rec.role) : void 0,
-    color: isHexColor(asString(rec.color)) ? asString(rec.color) : palette.chart[index % palette.chart.length],
-    colors: Array.isArray(rec.colors) ? rec.colors.filter((c) => typeof c === "string" && isHexColor(c)) : void 0,
-    aggregation: aggregationNext,
-    filter: sanitizeFilter(rec.filter) || sanitizeFilter({
-      field: rec.filterField,
-      op: rec.filterOp,
-      value: rec.filterValue
-    }),
-    kpi: rec.kpi && typeof rec.kpi === "object" ? {
-      value: asString(rec.kpi.value, "\u2014"),
-      trend: asString(rec.kpi.trend) || void 0,
-      field: asString(rec.kpi.field) || (!isDerivedMeasure(measure) ? measure?.field : void 0) || yField,
-      aggregation: AGG_SET.has(asString(rec.kpi.aggregation)) ? asString(rec.kpi.aggregation) : (!isDerivedMeasure(measure) ? measure?.agg : void 0) || aggregationNext,
-      format: MEASURE_FORMATS.includes(
-        asString(rec.kpi.format)
-      ) ? asString(rec.kpi.format) : void 0,
-      delta: Number.isFinite(Number(rec.kpi.delta)) ? Number(rec.kpi.delta) : void 0,
-      sparkline: Array.isArray(rec.kpi.sparkline) ? rec.kpi.sparkline.map((n) => Number(n)).filter((n) => Number.isFinite(n)) : void 0,
-      polarity
-    } : type === "kpi" ? { value: asString(rec.value, "\u2014"), trend: asString(rec.trend) || void 0, polarity } : void 0,
-    insight: rec.insight && typeof rec.insight === "object" ? {
-      title: asString(rec.insight.title) || void 0,
-      text: asString(rec.insight.text),
-      tone: ["neutral", "positive", "warning"].includes(
-        asString(rec.insight.tone)
-      ) ? asString(rec.insight.tone) : "neutral"
-    } : type === "insight" ? { text: asString(rec.text || rec.description, "No insight available."), tone: "neutral" } : void 0,
-    columns: Array.isArray(rec.columns) ? rec.columns.map((c) => String(c)) : void 0
-  };
-}
-function inferWidgetType(rec) {
-  if (rec.kpi || rec.value) return "kpi";
-  if (rec.insight || rec.text) return "insight";
-  if (rec.xAxisField || rec.yAxisField || rec.chartType) return "chart";
-  if (WIDGET_SET.has(asString(rec.type))) return asString(rec.type);
-  return "chart";
-}
-function isLegacyLayout(raw) {
-  if (!raw || typeof raw !== "object") return false;
-  const rec = raw;
-  if (rec.version === DASHBOARD_SPEC_VERSION && Array.isArray(rec.widgets)) return false;
-  return Array.isArray(rec.kpis) || Array.isArray(rec.charts);
-}
-function fromLegacyLayout(raw, seed = 1) {
-  const palette = getPalette(raw.globalBg?.includes("0") ? "midnight" : "ocean");
-  const widgets = [];
-  (raw.kpis || []).forEach((kpi, i) => {
-    widgets.push(
-      sanitizeWidget(
-        {
-          id: `legacy-kpi-${i}`,
-          type: "kpi",
-          title: kpi.label,
-          kpi: { value: String(kpi.value ?? "\u2014"), trend: kpi.trend },
-          layout: { x: i % 4 * 3, y: 0, w: 3, h: 3 }
-        },
-        i,
-        palette
-      )
-    );
-  });
-  (raw.charts || []).forEach((chart, i) => {
-    widgets.push(
-      sanitizeWidget(
-        {
-          id: chart.id || `legacy-chart-${i}`,
-          type: "chart",
-          title: chart.title,
-          chartType: chart.type,
-          datasetId: chart.datasetId,
-          xField: chart.xAxisField,
-          yField: chart.yAxisField,
-          groupField: chart.groupField,
-          sizeField: chart.sizeField,
-          color: chart.color,
-          filter: {
-            field: chart.filterField,
-            op: chart.filterOp,
-            value: chart.filterValue
-          },
-          layout: { x: i % 2 * 6, y: 3 + Math.floor(i / 2) * 6, w: 6, h: 6 }
-        },
-        (raw.kpis?.length || 0) + i,
-        palette
-      )
-    );
-  });
-  return {
-    version: DASHBOARD_SPEC_VERSION,
-    id: `legacy-${seed}`,
-    title: raw.title || "Intelligence Dashboard",
-    archetype: "command-center",
-    seed,
-    theme: {
-      palette: { ...palette, background: isHexColor(asString(raw.globalBg)) ? asString(raw.globalBg) : palette.background },
-      fontFamily: FONT_SET.has(asString(raw.fontFamily)) ? asString(raw.fontFamily) : "font-sans",
-      radius: RADIUS_SET.has(asString(raw.borderRadius)) ? asString(raw.borderRadius) : "rounded-3xl",
-      density: "comfortable"
-    },
-    sections: [],
-    widgets
-  };
-}
-function validateDashboardSpec(raw, fallback) {
-  if (isLegacyLayout(raw)) {
-    return fromLegacyLayout(raw, fallback?.seed ?? 1);
-  }
-  const rec = raw && typeof raw === "object" ? raw : {};
-  const themeRec = rec.theme && typeof rec.theme === "object" ? rec.theme : {};
-  const palette = sanitizePalette(themeRec.palette || rec.palette, fallback?.theme?.palette?.id);
-  const archetype = ARCHETYPE_SET.has(asString(rec.archetype)) ? asString(rec.archetype) : fallback?.archetype || "command-center";
-  const widgetsRaw = Array.isArray(rec.widgets) ? rec.widgets : [];
-  const widgets = widgetsRaw.map((w, i) => sanitizeWidget(w, i, palette));
-  const sections = Array.isArray(rec.sections) ? rec.sections.filter((s) => Boolean(s) && typeof s === "object").map((s, i) => ({
-    id: asString(s.id, `section-${i + 1}`),
-    title: asString(s.title) || void 0,
-    description: asString(s.description) || void 0
-  })) : [];
-  const narrative = rec.narrative && typeof rec.narrative === "object" ? {
-    headline: asString(rec.narrative.headline),
-    body: asString(rec.narrative.body)
-  } : void 0;
-  return {
-    version: DASHBOARD_SPEC_VERSION,
-    id: asString(rec.id, fallback?.id || `dash-${Date.now()}`),
-    title: asString(rec.title, fallback?.title || "Intelligence Dashboard"),
-    subtitle: asString(rec.subtitle, fallback?.subtitle) || void 0,
-    intent: asString(rec.intent, fallback?.intent) || void 0,
-    archetype,
-    seed: asNumber(rec.seed, fallback?.seed ?? 1),
-    theme: {
-      palette,
-      fontFamily: FONT_SET.has(asString(themeRec.fontFamily)) ? asString(themeRec.fontFamily) : fallback?.theme?.fontFamily || "font-sans",
-      headingFont: FONT_SET.has(asString(themeRec.headingFont)) ? asString(themeRec.headingFont) : void 0,
-      radius: RADIUS_SET.has(asString(themeRec.radius || rec.borderRadius)) ? asString(themeRec.radius || rec.borderRadius) : fallback?.theme?.radius || "rounded-3xl",
-      density: ["compact", "comfortable", "airy"].includes(asString(themeRec.density)) ? asString(themeRec.density) : "comfortable"
-    },
-    narrative: narrative?.headline || narrative?.body ? narrative : fallback?.narrative,
-    sections,
-    widgets: widgets.length > 0 ? widgets : fallback?.widgets || [],
-    filters: Array.isArray(rec.filters) ? rec.filters.map(sanitizeFilter).filter((f) => Boolean(f)) : void 0,
-    generatedBy: asString(rec.generatedBy, fallback?.generatedBy) || void 0
-  };
-}
-function scanBalancedObject(text, start) {
-  let depth = 0;
-  let inStr = false;
-  let escape = false;
-  for (let i = start; i < text.length; i += 1) {
-    const ch = text[i];
-    if (inStr) {
-      if (escape) {
-        escape = false;
-        continue;
-      }
-      if (ch === "\\") {
-        escape = true;
-        continue;
-      }
-      if (ch === '"') inStr = false;
-      continue;
-    }
-    if (ch === '"') {
-      inStr = true;
-      continue;
-    }
-    if (ch === "{") depth += 1;
-    else if (ch === "}") {
-      depth -= 1;
-      if (depth === 0) return i;
-    }
-  }
-  return -1;
-}
-function extractJsonObjects(text) {
-  const cleaned = String(text || "").replace(/```json\s*/gi, "").replace(/```/g, "").trim();
-  const found = [];
-  try {
-    found.push(JSON.parse(cleaned));
-  } catch {
-  }
-  for (let i = 0; i < cleaned.length; i += 1) {
-    if (cleaned[i] !== "{") continue;
-    const end = scanBalancedObject(cleaned, i);
-    if (end < 0) continue;
-    try {
-      found.push(JSON.parse(cleaned.slice(i, end + 1)));
-    } catch {
-    }
-    i = end;
-  }
-  return found;
-}
-function extractJsonObject(text) {
-  const candidates = extractJsonObjects(text);
-  if (candidates.length === 0) throw new Error("Model did not return valid JSON.");
-  const withWidgets = candidates.filter((item) => item && typeof item === "object" && Array.isArray(item.widgets));
-  const pool = withWidgets.length ? withWidgets : candidates;
-  return pool.sort((a, b) => JSON.stringify(b).length - JSON.stringify(a).length)[0];
-}
-
 // src/lib/dashboard/generate.ts
 function fallbackSpec(ctx) {
   if (ctx.widgetId && ctx.existing) {
@@ -5240,6 +5332,466 @@ async function healthHandler(_req, res) {
   });
 }
 
+// src/lib/report/facts.ts
+function buildReportFacts(title, datasets) {
+  const rows = datasets.flatMap((d) => d.data || []);
+  const truth = computeDataTruth(rows);
+  const dataset = datasets[0];
+  const fields = dataset ? classifyFields(dataset) : { measures: [], dimensions: [], time: [] };
+  const kpis = [];
+  const ranks = [];
+  const tokens = [
+    String(truth.rowCount),
+    `${truth.completenessScore}%`,
+    String(truth.anomalyCount)
+  ];
+  kpis.push({
+    label: "Rows analysed",
+    value: truth.rowCount.toLocaleString(),
+    raw: truth.rowCount,
+    context: `${datasets.length} dataset${datasets.length === 1 ? "" : "s"}`
+  });
+  kpis.push({
+    label: "Completeness",
+    value: `${truth.completenessScore}%`,
+    raw: truth.completenessScore,
+    context: `${truth.nullCount} empty cells of ${truth.rowCount * truth.columnCount || 0}`
+  });
+  kpis.push({
+    label: "Anomaly flags",
+    value: String(truth.anomalyCount),
+    raw: truth.anomalyCount,
+    context: "Null-rate and outlier flags from DataTruthEngine"
+  });
+  if (dataset) {
+    for (const candidate of proposeDerivedMeasures(dataset).slice(0, 4)) {
+      const raw = computeDerivedValue(dataset.data || [], candidate.measure);
+      if (!Number.isFinite(raw)) continue;
+      const value = formatDerived(raw, candidate.measure.format);
+      kpis.push({
+        label: candidate.title,
+        value,
+        raw,
+        context: `Computed ${candidate.measure.kind} on loaded rows`
+      });
+      tokens.push(value);
+    }
+    const primary = fields.measures.find((n) => /rev|session|amount/i.test(n)) || fields.measures[0];
+    if (primary) {
+      const sum = (dataset.data || []).reduce((acc, row) => acc + Number(row[primary] || 0), 0);
+      const value = formatMetric(sum, /rev|amount|spend|opex/i.test(primary) ? "currency" : "number");
+      kpis.push({
+        label: prettyField(primary),
+        value,
+        raw: sum,
+        context: `Sum of ${prettyField(primary)}`
+      });
+      tokens.push(value);
+    }
+    for (const dim of fields.dimensions.slice(0, 3)) {
+      if (!primary) break;
+      const ranked = rankedGroups(dataset.data || [], dim, primary);
+      if (!ranked[0]) continue;
+      const sharePct = Math.round(ranked[0].share * 100);
+      ranks.push({
+        dimension: prettyField(dim),
+        key: ranked[0].key,
+        value: formatMetric(ranked[0].value, /rev|amount|spend/i.test(primary) ? "currency" : "number"),
+        sharePct
+      });
+      tokens.push(`${sharePct}%`, ranked[0].key);
+    }
+  }
+  const outliers = Object.entries(truth.outlierSummary || {}).filter(([, count]) => Number(count) > 0).map(([field, count]) => ({ field: prettyField(field), count: Number(count) }));
+  let trend;
+  if (dataset && fields.time[0] && fields.measures[0]) {
+    const change = periodChange(dataset.data || [], fields.time[0], fields.measures[0]);
+    if (change) {
+      const deltaPct = Number(change.deltaPct.toFixed(1));
+      trend = {
+        measure: prettyField(fields.measures[0]),
+        deltaPct,
+        direction: deltaPct > 0.4 ? "up" : deltaPct < -0.4 ? "down" : "flat"
+      };
+      tokens.push(`${deltaPct}%`);
+    }
+  }
+  const findings = dataset ? analyzeDataset(dataset).slice(0, 6).map((f) => f.text || f.title) : [];
+  const methodology = [
+    `Figures are computed on ${truth.rowCount} loaded rows \xD7 ${truth.columnCount} columns.`,
+    "Completeness is 1 \u2212 (empty cells / total cells). Anomalies are nulls plus numeric outliers from DataTruthEngine.",
+    "Derived ratios (margin, AOV, rates) use the same measure engine as generated dashboards.",
+    "The model is instructed not to invent numbers; any AI draft is checked against this fact list. If the check fails or the provider errors, a labelled template is used instead."
+  ].join(" ");
+  return {
+    title,
+    rowCount: truth.rowCount,
+    columnCount: truth.columnCount,
+    completeness: truth.completenessScore,
+    anomalies: truth.anomalyCount,
+    kpis: kpis.slice(0, 8),
+    ranks,
+    trend,
+    outliers,
+    findings,
+    methodology,
+    tokens: [...new Set(tokens.filter(Boolean))]
+  };
+}
+
+// src/lib/report/schema.ts
+var REPORT_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["executiveSummary", "keyFindings", "trends", "risks", "recommendations", "methodology"],
+  properties: {
+    executiveSummary: { type: "string" },
+    keyFindings: { type: "array", items: { type: "string" }, minItems: 3, maxItems: 6 },
+    trends: { type: "string" },
+    risks: { type: "string" },
+    recommendations: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 5 },
+    methodology: { type: "string" }
+  }
+};
+function reportPrompt(facts, extras) {
+  const kpiBlock = facts.kpis.map((k) => `${k.label}: ${k.value} [${k.raw}] \u2014 ${k.context}`).join("\n");
+  const rankBlock = facts.ranks.map((r) => `${r.dimension}/${r.key}: ${r.value} (${r.sharePct}%)`).join("\n");
+  return `You are an executive briefing writer. Use ONLY the computed facts. Never invent a number, name, or percentage. If a section cannot be supported, write "Insufficient data in current scope."
+
+Computed facts (authoritative):
+Title: ${facts.title}
+Rows: ${facts.rowCount}
+Columns: ${facts.columnCount}
+Completeness: ${facts.completeness}%
+Anomalies: ${facts.anomalies}
+KPIs:
+${kpiBlock}
+Mix:
+${rankBlock || "(none)"}
+Trend: ${facts.trend ? `${facts.trend.measure} ${facts.trend.deltaPct}% ${facts.trend.direction}` : "(none)"}
+Outliers: ${facts.outliers.map((o) => `${o.field}:${o.count}`).join(", ") || "(none)"}
+Verified findings:
+${facts.findings.join("\n") || "(none)"}
+
+Allowed number tokens: ${facts.tokens.join(" | ")}
+
+Writer guidelines: ${extras.guidelines || "Plain, specific, board-ready. No hype."}
+Forbidden: ${extras.forbidden || "Do not recommend actions that require data not listed."}
+Recent chat (context only, not a source of numbers): ${extras.chat || "(none)"}
+
+Return JSON with keys executiveSummary, keyFindings (array), trends, risks, recommendations (array), methodology.
+Every numeral in the JSON must appear in the computed facts. Copy metric strings exactly.`;
+}
+
+// src/lib/report/template.ts
+function factsToMarkdown(facts, doc) {
+  const findings = doc.keyFindings.map((line) => `- ${line}`).join("\n");
+  const recs = doc.recommendations.map((line, i) => `${i + 1}. ${line}`).join("\n");
+  const kpis = facts.kpis.map((k) => `- **${k.label}:** ${k.value} (${k.context})`).join("\n");
+  const ranks = facts.ranks.map((r) => `- **${r.dimension}:** ${r.key} at ${r.sharePct}% (${r.value})`).join("\n");
+  const banner = doc.source === "fallback" ? `
+> **Template fallback** \u2014 ${doc.fallbackReason || "the model did not return a verified draft."} Every figure below is computed from loaded rows.
+` : "";
+  return `# Executive Intelligence Report
+${banner}
+## 1. Executive Summary
+${doc.executiveSummary}
+
+## 2. Key findings
+${findings || "_Insufficient data in current scope._"}
+
+### Computed metrics
+${kpis || "_No measures in scope._"}
+
+${ranks ? `### Mix
+${ranks}` : ""}
+
+## 3. Trends and drivers
+${doc.trends}
+
+## 4. Risks and anomalies
+${doc.risks}
+
+## 5. Recommendations
+${recs || "_Insufficient data in current scope._"}
+
+## Appendix: Methodology and data note
+${doc.methodology}
+`;
+}
+function buildTemplateReport(facts, reason) {
+  const top = facts.ranks[0];
+  const kpiLine = facts.kpis.filter((k) => k.label !== "Rows analysed").slice(0, 4).map((k) => `${k.label} ${k.value}`).join("; ");
+  const trendLine = facts.trend ? `${facts.trend.measure} moved ${facts.trend.deltaPct > 0 ? "+" : ""}${facts.trend.deltaPct}% period-over-period (${facts.trend.direction}).` : "No dated measure was available to compute a period change.";
+  const keyFindings = [
+    ...facts.findings.slice(0, 3),
+    top ? `${top.key} leads ${top.dimension} at ${top.sharePct}% of the primary measure (${top.value}).` : "",
+    facts.anomalies === 0 ? `Data completeness is ${facts.completeness}% across ${facts.rowCount.toLocaleString()} rows; no anomaly flags.` : `${facts.anomalies} anomaly flags on ${facts.rowCount.toLocaleString()} rows (completeness ${facts.completeness}%).`
+  ].filter(Boolean).slice(0, 5);
+  const risks = facts.anomalies > 0 || facts.outliers.length ? `Watch ${facts.outliers.map((o) => `${o.field} (${o.count} outliers)`).join(", ") || "null-rate flags"}. Completeness ${facts.completeness}%.` : `No outlier fields were flagged. Completeness is ${facts.completeness}% on the loaded extract.`;
+  const recommendations = [
+    top ? `Investigate why ${top.key} accounts for ${top.sharePct}% of ${top.dimension} before scaling spend elsewhere.` : "Load a dated measure to unlock trend-based actions.",
+    facts.trend?.direction === "down" ? `Arrest the ${facts.trend.deltaPct}% decline in ${facts.trend.measure}; start with the lagging dimension in Key findings.` : "Keep the current mix instrumentation and re-run after the next load to confirm the period change.",
+    "Treat every figure in this document as server-computed; do not paste unverified model output into investor materials."
+  ];
+  const executiveSummary = [
+    `${facts.title} covers ${facts.rowCount.toLocaleString()} rows and ${facts.columnCount} columns.`,
+    kpiLine ? `Headline computed metrics: ${kpiLine}.` : "",
+    trendLine,
+    top ? `${top.key} is the largest ${top.dimension.toLowerCase()} slice at ${top.sharePct}%.` : ""
+  ].filter(Boolean).join(" ");
+  return {
+    title: `${facts.title} \u2014 executive report`,
+    executiveSummary,
+    keyFindings,
+    trends: trendLine,
+    risks,
+    recommendations,
+    methodology: facts.methodology,
+    source: "fallback",
+    fallbackReason: reason,
+    generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    generatedBy: "template"
+  };
+}
+
+// src/lib/report/generate.ts
+function statusOf2(error) {
+  if (error instanceof AIProviderError) return error.status;
+  if (error instanceof GenerationTimeoutError) return error.status;
+  if (error && typeof error === "object" && "status" in error) {
+    const n = Number(error.status);
+    return Number.isFinite(n) ? n : void 0;
+  }
+  return void 0;
+}
+function asDoc(parsed) {
+  if (!parsed || typeof parsed !== "object") return null;
+  const rec = parsed;
+  const executiveSummary = String(rec.executiveSummary || rec.summary || "").trim();
+  const keyFindings = Array.isArray(rec.keyFindings) ? rec.keyFindings.map((x) => String(x).trim()).filter(Boolean) : [];
+  const recommendations = Array.isArray(rec.recommendations) ? rec.recommendations.map((x) => String(x).trim()).filter(Boolean) : [];
+  if (!executiveSummary || keyFindings.length < 2) return null;
+  return {
+    executiveSummary,
+    keyFindings,
+    trends: String(rec.trends || "").trim() || "Insufficient data in current scope.",
+    risks: String(rec.risks || "").trim() || "Insufficient data in current scope.",
+    recommendations: recommendations.length ? recommendations : ["Insufficient data in current scope."],
+    methodology: String(rec.methodology || "").trim()
+  };
+}
+async function generateExecutiveReportOnServer(ctx, env = typeof process !== "undefined" ? process.env : {}) {
+  const facts = buildReportFacts(ctx.title || "Workspace", ctx.datasets || []);
+  const template = (reason, extra) => {
+    const base = buildTemplateReport(facts, reason);
+    const doc = {
+      ...base,
+      error: extra?.error,
+      generatedBy: extra?.generatedBy || base.generatedBy,
+      attempts: extra?.attempts,
+      facts,
+      markdown: ""
+    };
+    doc.markdown = factsToMarkdown(facts, doc);
+    return doc;
+  };
+  if (!ctx.datasets?.length || facts.rowCount === 0) {
+    return template("No dataset loaded. Upload a CSV before generating a report.");
+  }
+  const started = Date.now();
+  const deadlineMs = ctx.deadlineMs ?? resolveGenerateDeadlineMs(env);
+  const deadlineAt = started + deadlineMs;
+  const attempts = [];
+  const config = resolveProviderConfig({
+    provider: ctx.provider,
+    baseUrl: ctx.baseUrl,
+    model: ctx.model,
+    apiKey: ctx.apiKey
+  }, env);
+  const def = PROVIDERS[config.provider];
+  const hasKey = Boolean(config.apiKey) || !def.requiresApiKey;
+  attempts.push({
+    step: "resolve",
+    status: 200,
+    ms: 0,
+    model: config.model,
+    keySource: config.source.apiKey
+  });
+  console.info(JSON.stringify({
+    evt: "report.generate",
+    route: "/api/reports/generate",
+    provider: config.provider,
+    model: config.model,
+    keySource: config.source.apiKey,
+    hasKey,
+    rowCount: facts.rowCount,
+    compatible: config.compatible
+  }));
+  if (!hasKey) {
+    console.info(JSON.stringify({ evt: "report.generate.result", source: "fallback", reason: "missing_key" }));
+    return template(`Missing API key for ${def.label}. Showing a computed template instead.`, { attempts });
+  }
+  const prompt = reportPrompt(facts, {
+    chat: ctx.chatContext,
+    guidelines: ctx.policies?.writerGuidelines,
+    forbidden: ctx.policies?.forbiddenActions
+  });
+  const remaining = () => Math.max(1e3, deadlineAt - Date.now());
+  const fetchImpl = ctx.fetchImpl || fetch;
+  const finishAi = (draft, model) => {
+    const body = { ...draft, methodology: draft.methodology || facts.methodology };
+    const combined = [body.executiveSummary, ...body.keyFindings, body.trends, body.risks, ...body.recommendations].join("\n");
+    if (!numbersMatchFacts(combined, facts.tokens)) {
+      console.info(JSON.stringify({ evt: "report.generate.verify", ok: false, model }));
+      return template("AI draft contained numbers that are not in the computed fact list.", {
+        attempts,
+        generatedBy: model,
+        error: "unverified numbers"
+      });
+    }
+    const doc = {
+      title: `${facts.title} \u2014 executive report`,
+      ...body,
+      source: "ai",
+      generatedBy: model,
+      generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      facts,
+      attempts,
+      markdown: ""
+    };
+    doc.markdown = factsToMarkdown(facts, doc);
+    return doc;
+  };
+  try {
+    if (config.compatible === "gemini") {
+      const t0 = Date.now();
+      const text = await geminiGenerate(config, [{ role: "user", content: `${prompt}
+Return JSON only.` }]);
+      attempts.push({ step: "plain", status: 200, ms: Date.now() - t0, model: config.model, keySource: config.source.apiKey });
+      const parsed = asDoc(extractJsonObject(text));
+      if (!parsed) return template("Gemini did not return a usable JSON report.", { attempts, generatedBy: config.model });
+      return finishAi(parsed, config.model);
+    }
+    const skipSchema = isOpenRouterFreeRouter(config.model);
+    let useSchema = !skipSchema;
+    if (!skipSchema) {
+      try {
+        useSchema = await modelSupportsStructuredOutputs(config, fetchImpl);
+        attempts.push({ step: "models", status: 200, ms: 0, model: config.model, keySource: config.source.apiKey });
+      } catch {
+        useSchema = false;
+      }
+    }
+    const ladder = useSchema ? ["json_schema", "json_object", "plain"] : ["json_object", "plain"];
+    let lastError = "";
+    for (const step of ladder) {
+      if (Date.now() > deadlineAt) {
+        return template(`timed out after ${Math.round((Date.now() - started) / 1e3)}s at step ${step}`, { attempts });
+      }
+      const t0 = Date.now();
+      try {
+        const generated = await openaiGenerate(config, [{ role: "user", content: prompt }], {
+          json: step !== "plain",
+          temperature: 0.2,
+          maxTokens: 4e3,
+          jsonSchema: step === "json_schema" ? REPORT_JSON_SCHEMA : void 0,
+          format: step,
+          timeoutMs: resolveStepTimeoutMs(remaining(), env),
+          fetchImpl,
+          retries: step === "json_schema" ? 0 : 1
+        });
+        const parsed = asDoc(extractJsonObject(generated.text));
+        attempts.push({
+          step,
+          status: 200,
+          ms: Date.now() - t0,
+          model: generated.model || config.model,
+          keySource: config.source.apiKey,
+          error: parsed ? void 0 : "unusable JSON"
+        });
+        if (!parsed) {
+          lastError = "unusable JSON";
+          console.info(JSON.stringify({ evt: "report.generate.parse", step, error: lastError, excerpt: generated.text.slice(0, 240) }));
+          continue;
+        }
+        return finishAi(parsed, generated.model || config.model);
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+        console.info(JSON.stringify({
+          evt: "report.generate.provider",
+          step,
+          status: statusOf2(error) || 500,
+          error: lastError
+        }));
+        attempts.push({
+          step,
+          status: statusOf2(error) || 500,
+          ms: Date.now() - t0,
+          model: config.model,
+          keySource: config.source.apiKey,
+          error: lastError
+        });
+        const status = statusOf2(error);
+        if (status === 401 || status === 402 || status === 403) {
+          return template(lastError, { attempts, error: lastError, generatedBy: config.model });
+        }
+      }
+    }
+    console.info(JSON.stringify({ evt: "report.generate.result", source: "fallback", reason: lastError || "ladder_exhausted", attempts: attempts.length }));
+    return template(lastError || "Provider ladder exhausted.", { attempts, error: lastError, generatedBy: config.model });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    attempts.push({ step: "fatal", status: statusOf2(error) || 500, ms: Date.now() - started, error: message, keySource: config.source.apiKey });
+    return template(message, { attempts, error: message, generatedBy: config.model });
+  }
+}
+
+// src/server/handlers/reports.ts
+function asDatasets2(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item, i) => {
+    const rec = item && typeof item === "object" ? item : {};
+    return {
+      id: String(rec.id || `ds-${i}`),
+      name: String(rec.name || `Dataset ${i + 1}`),
+      data: Array.isArray(rec.data) ? rec.data : [],
+      columns: Array.isArray(rec.columns) ? rec.columns : void 0
+    };
+  });
+}
+async function generateReportHandler(req, res) {
+  const datasets = asDatasets2(req.body?.datasets);
+  const result = await generateExecutiveReportOnServer({
+    title: String(req.body?.title || "Workspace"),
+    intent: String(req.body?.intent || ""),
+    datasets,
+    chatContext: String(req.body?.chatContext || ""),
+    policies: req.body?.policies,
+    apiKey: readApiKey(req),
+    provider: req.body?.provider,
+    model: req.body?.model,
+    baseUrl: req.body?.baseUrl,
+    deadlineMs: resolveGenerateDeadlineMs(process.env)
+  });
+  console.info(JSON.stringify({
+    evt: "report.generate.http",
+    route: "/api/reports/generate",
+    source: result.source,
+    fallbackReason: result.fallbackReason,
+    error: result.error,
+    attempts: result.attempts
+  }));
+  const status = httpStatusForGenerateResult({
+    spec: {},
+    source: result.source,
+    fallbackReason: result.fallbackReason,
+    error: result.error,
+    attempts: result.attempts
+  });
+  return res.status(status).json(result);
+}
+
 // src/server/app.ts
 init_ssr();
 function sampleFromId(id) {
@@ -5256,15 +5808,29 @@ function sampleFromId(id) {
   const archetype = match[2];
   const space = createSampleSpace(kind);
   const datasets = toDashboardDatasets(space);
-  const spec = buildFallbackDashboard({
-    title: space.title,
-    intent: space.promptContext,
-    datasets,
-    seed: 17,
-    archetype,
-    mode
-  });
+  const spec = specFromSampleKind(kind, archetype, mode, space.title, space.promptContext, datasets);
   return { spec, datasets };
+}
+function specFromSampleKind(kind, archetype, mode, title, intent, datasets) {
+  const exampleKey = kind === "sales" || kind === "web" || kind === "finance" ? kind : null;
+  if (!exampleKey) {
+    return buildFallbackDashboard({ title, intent, datasets, seed: 17, archetype, mode });
+  }
+  const palette = pickPaletteForMode(mode === "dark" ? "midnight" : "ocean", mode);
+  const validated = validateDashboardSpec({
+    ...EXAMPLE_SPECS[exampleKey],
+    title,
+    intent,
+    archetype: EXAMPLE_SPECS[exampleKey].archetype || archetype,
+    theme: {
+      palette: { ...palette, mode, background: "transparent" },
+      fontFamily: "font-sans",
+      headingFont: "font-grotesk",
+      radius: "rounded-2xl",
+      density: "comfortable"
+    }
+  });
+  return finalizeDashboardSpec(validated, datasets, { keepCuts: true });
 }
 function createApp(opts = {}) {
   const app2 = express();
@@ -5289,6 +5855,7 @@ function createApp(opts = {}) {
   app2.get("/api/dashboards", asyncRoute(listDashboardsHandler));
   app2.post("/api/dashboards/generate", asyncRoute(async (req, res) => generateDashboardHandler(req, res, loadRenderer)));
   app2.post("/api/dashboards/render", asyncRoute(async (req, res) => renderDashboardHandler(req, res, loadRenderer)));
+  app2.post("/api/reports/generate", asyncRoute(generateReportHandler));
   app2.get("/d/:id", asyncRoute(async (req, res) => {
     const stored = await getStoredDashboard(req.params.id);
     const payload = stored || sampleFromId(req.params.id);

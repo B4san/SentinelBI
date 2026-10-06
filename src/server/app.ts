@@ -1,13 +1,17 @@
 import express, { type Express, type Request, type Response } from 'express';
 import { buildFallbackDashboard } from '../lib/dashboard/fallback';
 import { mockedAiSpec } from '../lib/dashboard/mockedAiSpec';
+import { pickPaletteForMode } from '../lib/dashboard/palettes';
+import { EXAMPLE_SPECS } from '../lib/dashboard/prompt';
 import { createSampleSpace, toDashboardDatasets, type SampleKind } from '../lib/sampleData';
 import { finalizeDashboardSpec } from '../lib/dashboard/finalize';
-import type { LayoutArchetype } from '../lib/dashboard/types';
+import type { DashboardSpec, LayoutArchetype } from '../lib/dashboard/types';
+import { validateDashboardSpec } from '../lib/dashboard/validate';
 import { aiGenerateHandler, aiModelsHandler, aiProvidersHandler } from './handlers/ai';
 import { geminiHandler } from './handlers/gemini';
 import { generateDashboardHandler, getStoredDashboard, listDashboardsHandler, renderDashboardHandler } from './handlers/dashboards';
 import { healthHandler } from './handlers/health';
+import { generateReportHandler } from './handlers/reports';
 import { asyncRoute, sendMappedError } from './http';
 import { prodAssets, shareExpiredHtml, type LoadRenderer } from './ssr';
 
@@ -30,15 +34,37 @@ export function sampleFromId(id: string) {
   const archetype = match[2] as LayoutArchetype;
   const space = createSampleSpace(kind);
   const datasets = toDashboardDatasets(space);
-  const spec = buildFallbackDashboard({
-    title: space.title,
-    intent: space.promptContext,
-    datasets,
-    seed: 17,
-    archetype,
-    mode,
-  });
+  const spec = specFromSampleKind(kind, archetype, mode, space.title, space.promptContext, datasets);
   return { spec, datasets };
+}
+
+function specFromSampleKind(
+  kind: SampleKind,
+  archetype: LayoutArchetype,
+  mode: 'light' | 'dark',
+  title: string,
+  intent: string,
+  datasets: ReturnType<typeof toDashboardDatasets>,
+): DashboardSpec {
+  const exampleKey = kind === 'sales' || kind === 'web' || kind === 'finance' ? kind : null;
+  if (!exampleKey) {
+    return buildFallbackDashboard({ title, intent, datasets, seed: 17, archetype, mode });
+  }
+  const palette = pickPaletteForMode(mode === 'dark' ? 'midnight' : 'ocean', mode);
+  const validated = validateDashboardSpec({
+    ...(EXAMPLE_SPECS[exampleKey] as object),
+    title,
+    intent,
+    archetype: (EXAMPLE_SPECS[exampleKey] as { archetype?: string }).archetype || archetype,
+    theme: {
+      palette: { ...palette, mode, background: 'transparent' },
+      fontFamily: 'font-sans',
+      headingFont: 'font-grotesk',
+      radius: 'rounded-2xl',
+      density: 'comfortable',
+    },
+  });
+  return finalizeDashboardSpec(validated, datasets, { keepCuts: true });
 }
 
 export function createApp(opts: CreateAppOptions = {}): Express {
@@ -66,6 +92,7 @@ export function createApp(opts: CreateAppOptions = {}): Express {
   app.get('/api/dashboards', asyncRoute(listDashboardsHandler));
   app.post('/api/dashboards/generate', asyncRoute(async (req, res) => generateDashboardHandler(req, res, loadRenderer)));
   app.post('/api/dashboards/render', asyncRoute(async (req, res) => renderDashboardHandler(req, res, loadRenderer)));
+  app.post('/api/reports/generate', asyncRoute(generateReportHandler));
 
   app.get('/d/:id', asyncRoute(async (req: Request, res: Response) => {
     const stored = await getStoredDashboard(req.params.id);
