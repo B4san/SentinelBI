@@ -4,6 +4,7 @@ import { formatMetric, prepareChartSeries } from '../../lib/dashboard/aggregate'
 import { formatLocalDate } from '../../lib/dashboard/dates';
 import { metricFormat, prettyField } from '../../lib/dashboard/insights';
 import { looksLikeDuration } from '../../lib/dashboard/measures';
+import { ArcChart, canUseArcChart } from './ArcCharts';
 
 type PlotRow = Record<string, string | number | null | undefined>;
 
@@ -58,6 +59,14 @@ export function ChartRenderer({
     return (
       <div className="h-full min-h-[140px] flex items-center justify-center text-sm" style={{ color: palette.muted }}>
         No points for this encoding. Pick other fields or clear the filter.
+      </div>
+    );
+  }
+
+  if (canUseArcChart(widget, data)) {
+    return (
+      <div ref={ref} className="h-full w-full min-h-0 arc-chart-host">
+        <ArcChart spec={spec} widget={widget} datasets={datasets} filters={filters} data={data} height={h} onPointClick={onPointClick} />
       </div>
     );
   }
@@ -627,7 +636,9 @@ function BulletChart({
             <rect x={120} y={y + 4} width={Math.max(1, bar)} height={12} rx={3} fill={palette.chart[0]} />
             {targetKey && <line x1={120 + tx} x2={120 + tx} y1={y} y2={y + 20} stroke={palette.text} strokeWidth={2} />}
             <text x={width - 8} y={y + 14} textAnchor="end" fontSize="11" fill={variance < 0 ? '#e11d48' : '#059669'}>
-              {formatMetric(variance, metricFormat(actualKey))}
+              {targetKey && Number.isFinite(target)
+                ? formatMetric(variance, metricFormat(actualKey))
+                : formatMetric(actual, metricFormat(actualKey))}
             </text>
           </g>
         );

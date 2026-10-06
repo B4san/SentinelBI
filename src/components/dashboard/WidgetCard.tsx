@@ -1,11 +1,15 @@
 import React from 'react';
-import { ArrowDownRight, ArrowUpRight, Filter, GripVertical, RefreshCw } from 'lucide-react';
+import { Filter, GripVertical, RefreshCw } from 'lucide-react';
 import type { DashboardDataset, DashboardSpec, DashboardWidget } from '../../lib/dashboard/types';
 import { computeKpiStats, formatMetric } from '../../lib/dashboard/aggregate';
-import { metricFormat, prettyField } from '../../lib/dashboard/insights';
+import { prettyField } from '../../lib/dashboard/insights';
 import { formatDeltaLabel, inferMetricPolarity, isRateMetric } from '../../lib/dashboard/metrics';
 import { prepareTableModel } from '../../lib/dashboard/table';
 import type { WidgetFilter } from '../../lib/dashboard/types';
+import { Badge } from '../arc/badge/badge';
+import { MetricCard } from '../arc/metric-card/metric-card';
+import { SortableDataTable } from '../arc/sortable-data-table/sortable-data-table';
+import { ArcGaugeCard, ArcSparklineStat } from './ArcCharts';
 import { ChartRenderer } from './ChartRenderer';
 
 export function WidgetCard({
@@ -41,7 +45,7 @@ export function WidgetCard({
   return (
     <article
       onClick={() => onSelect?.(widget.id)}
-      className={`dash-card h-full w-full min-w-0 min-h-0 flex flex-col ${isSection || isInsight ? 'overflow-visible' : 'overflow-hidden'} border ${radius} ${selected ? 'ring-2 ring-offset-2' : ''} ${isSection ? 'dash-card-flush' : ''}`}
+      className={`dash-card h-full w-full min-w-0 min-h-0 flex flex-col ${isSection || isInsight ? 'overflow-visible' : 'overflow-hidden'} border ${radius} ${selected ? 'ring-2 ring-offset-2' : ''} ${isSection ? 'dash-card-flush' : ''} ${isKpi ? 'dash-kpi-shell' : ''}`}
       style={{
         background: isSection ? 'transparent' : palette.surface,
         color: palette.text,
@@ -66,9 +70,9 @@ export function WidgetCard({
               <p className="text-[11px] mt-0.5 truncate" style={{ color: palette.muted }}>{widget.subtitle}</p>
             )}
             {widget.filter && (
-              <p className="inline-flex items-center gap-1 mt-1 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full" style={{ background: palette.accentSoft, color: palette.accent }}>
+              <Badge tone="info" size="sm" className="mt-1">
                 <Filter className="w-3 h-3" /> {widget.filter.field} {widget.filter.op} {widget.filter.value}
-              </p>
+              </Badge>
             )}
           </div>
           {onRegenerate && (
@@ -94,24 +98,20 @@ export function WidgetCard({
   );
 }
 
-function Sparkline({ values, color, wide }: { values: number[]; color: string; wide?: boolean }) {
-  if (values.length < 2) return null;
-  const w = wide ? 128 : 72;
-  const h = wide ? 40 : 28;
-  const p = 2;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min || 1;
-  const pts = values.map((v, i) => {
-    const x = p + (i / (values.length - 1)) * (w - p * 2);
-    const y = h - p - ((v - min) / span) * (h - p * 2);
-    return `${x},${y}`;
-  }).join(' ');
-  return (
-    <svg width={w} height={h} className="shrink-0 overflow-visible" aria-hidden>
-      <polyline fill="none" stroke={color} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" points={pts} />
-    </svg>
-  );
+function kpiDisplay(raw: number, format: string): { value: number; suffix?: string } {
+  if (format === 'percent') {
+    const pct = Math.abs(raw) <= 1.5 ? raw * 100 : raw;
+    return { value: Number(pct.toFixed(1)), suffix: '%' };
+  }
+  if (format === 'currency') {
+    if (Math.abs(raw) >= 1_000_000) return { value: Number((raw / 1_000_000).toFixed(1)), suffix: 'M' };
+    if (Math.abs(raw) >= 1_000) return { value: Number((raw / 1_000).toFixed(1)), suffix: 'K' };
+    return { value: Math.round(raw) };
+  }
+  if (format === 'multiple') return { value: Number(raw.toFixed(2)), suffix: '×' };
+  if (Math.abs(raw) >= 1_000_000) return { value: Number((raw / 1_000_000).toFixed(1)), suffix: 'M' };
+  if (Math.abs(raw) >= 1_000) return { value: Number((raw / 1_000).toFixed(1)), suffix: 'K' };
+  return { value: Number(raw.toFixed(Math.abs(raw) < 10 && !Number.isInteger(raw) ? 1 : 0)) };
 }
 
 function WidgetBody({
@@ -142,33 +142,47 @@ function WidgetBody({
       rate: stats.format === 'percent' || isRateMetric(widget.title, stats.format),
       polarity,
     });
+    const tone = pretty?.flat
+      ? 'accent' as const
+      : (delta ?? 0) < 0
+        ? (polarity === 'lower-is-better' ? 'success' as const : 'warning' as const)
+        : 'success' as const;
+    const numeric = kpiDisplay(stats.raw, stats.format);
+    if (widget.componentId === 'arc.gauge') {
+      return <ArcGaugeCard value={stats.raw} label={widget.title} detail={stats.trend || stats.value} tone={tone} />;
+    }
+    if (widget.componentId === 'arc.sparkline') {
+      return (
+        <div className="h-full px-3 py-2">
+          <ArcSparklineStat
+            values={stats.sparkline}
+            label={widget.title}
+            display={stats.value}
+            change={pretty?.label}
+            tone={tone}
+          />
+        </div>
+      );
+    }
     return (
-      <div className={`h-full flex flex-col ${hero ? 'justify-between px-5 py-4' : 'justify-center gap-1.5 px-4 py-3'}`}>
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              {editing && <GripVertical className="w-3 h-3 shrink-0 opacity-40 cursor-grab" data-drag-handle="true" />}
-              <p className="text-[12px] font-medium truncate" style={{ color: palette.muted }}>
-                {widget.title}
-              </p>
-            </div>
+      <div className={`h-full ${hero ? 'dash-kpi-hero' : ''}`}>
+        <MetricCard
+          label={widget.title}
+          value={numeric.value}
+          suffix={numeric.suffix}
+          context={stats.trend || stats.value}
+          change={pretty?.label}
+        />
+        {hero && stats.sparkline.length > 1 && (
+          <div className="px-3 pb-3">
+            <ArcSparklineStat
+              values={stats.sparkline}
+              label={`${widget.title} trend`}
+              display={stats.value}
+              change={pretty?.label}
+              tone={tone}
+            />
           </div>
-          {pretty && (
-            <span
-              className="inline-flex items-center gap-0.5 text-[11px] font-semibold shrink-0"
-              style={{ color: pretty.color }}
-            >
-              {!pretty.flat && ((delta ?? 0) < 0 ? <ArrowDownRight className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />)}
-              {pretty.label}
-            </span>
-          )}
-        </div>
-        <div className="flex items-end justify-between gap-3 mt-1">
-          <div className={`${hero ? 'dash-kpi-value-hero' : 'dash-kpi-value'} leading-none`}>{stats.value}</div>
-          <Sparkline values={stats.sparkline} color={widget.color || palette.accent} wide={hero} />
-        </div>
-        {hero && stats.trend && (
-          <p className="text-[11px] mt-2 truncate" style={{ color: palette.muted }}>{stats.trend}</p>
         )}
       </div>
     );
@@ -222,58 +236,58 @@ function WidgetBody({
   if (widget.type === 'table') {
     const model = prepareTableModel(datasets, widget, filters);
     const compareOn = Boolean(widget.compare);
+    const columns = [
+      ...model.columns.map((c) => ({
+        key: c,
+        label: prettyField(c),
+        sortable: true,
+        numeric: model.rawRows.some((row) => typeof row[c] === 'number'),
+        render: (_value: unknown, row: Record<string, unknown>) => {
+          const idx = Number(row.__i);
+          const formatted = model.rows[idx]?.[c];
+          const raw = model.rawRows[idx]?.[c];
+          const isTotal = String(model.rows[idx]?.[model.columns[0]] || '').toLowerCase() === 'total';
+          const bar = model.barField === c && typeof raw === 'number' && !isTotal;
+          if (!bar) return String(formatted ?? '');
+          const max = Math.max(
+            ...model.rawRows
+              .filter((_, i) => String(model.rows[i]?.[model.columns[0]] || '').toLowerCase() !== 'total')
+              .map((r) => Number(r[c]) || 0),
+            1,
+          );
+          const pct = Math.max(0, Math.min(100, (Number(raw) / max) * 100));
+          return (
+            <div className="flex items-center gap-2">
+              <span className="relative h-2 flex-1 rounded-full overflow-hidden" style={{ background: palette.border }}>
+                <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${pct}%`, background: palette.accent, opacity: 0.7 }} />
+              </span>
+              <span className="w-[4.5rem] text-right shrink-0 tabular-nums">{String(formatted ?? '')}</span>
+            </div>
+          );
+        },
+      })),
+      ...(compareOn ? [{
+        key: '__delta',
+        label: 'Δ',
+        sortable: true,
+        numeric: true,
+        render: (_value: unknown, row: Record<string, unknown>) => (
+          typeof row.__delta === 'number' ? formatMetric(Number(row.__delta), 'percent') : '—'
+        ),
+      }] : []),
+    ];
+    const rows = model.rawRows.map((raw, i) => ({ ...raw, __i: i, id: `r${i}` }));
     return (
-      <div className="h-auto min-h-0 text-[12px] overflow-visible">
-        <table className="w-full table-fixed">
-          <thead>
-            <tr>
-              {model.columns.map((c) => (
-                <th key={c} className="text-left font-semibold pb-2 pr-3 sticky top-0" style={{ color: palette.muted, background: palette.surface }}>
-                  {prettyField(c)}
-                </th>
-              ))}
-              {compareOn && (
-                <th className="text-right font-semibold pb-2" style={{ color: palette.muted, background: palette.surface }}>Δ</th>
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {model.rows.map((row, i) => {
-              const isTotal = String(row[model.columns[0]] || '').toLowerCase() === 'total';
-              return (
-              <tr key={i} className="border-t" style={{ borderColor: palette.border, fontWeight: isTotal ? 600 : 400 }}>
-                {model.columns.map((c) => {
-                  const raw = model.rawRows[i]?.[c];
-                  const bar = model.barField === c && typeof raw === 'number' && !isTotal;
-                  const max = bar
-                    ? Math.max(...model.rawRows.filter((_, idx) => String(model.rawRows[idx][model.columns[0]] || '').toLowerCase() !== 'total').map((r) => Number(r[c]) || 0), 1)
-                    : 1;
-                  const pct = bar ? Math.max(0, Math.min(100, (Number(raw) / max) * 100)) : 0;
-                  return (
-                    <td key={c} className="py-1.5 pr-3 tabular-nums">
-                      {bar ? (
-                        <div className="flex items-center gap-2">
-                          <span className="relative h-2 flex-1 rounded-full overflow-hidden" style={{ background: palette.border }}>
-                            <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${pct}%`, background: palette.accent, opacity: 0.7 }} />
-                          </span>
-                          <span className="w-[4.5rem] text-right shrink-0">{String(row[c] ?? '')}</span>
-                        </div>
-                      ) : (
-                        <span>{String(row[c] ?? '')}</span>
-                      )}
-                    </td>
-                  );
-                })}
-                {compareOn && (
-                  <td className="py-1.5 text-right tabular-nums" style={{ color: palette.muted }}>
-                    {typeof model.rawRows[i]?.__delta === 'number' ? formatMetric(Number(model.rawRows[i].__delta), 'percent') : '—'}
-                  </td>
-                )}
-              </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="h-auto min-h-0 overflow-visible px-1">
+        <SortableDataTable
+          rows={rows}
+          columns={columns}
+          rowKey="id"
+          caption={widget.title}
+          defaultSort={widget.table?.sort ? { key: widget.table.sort.field, direction: widget.table.sort.dir } : undefined}
+          emptyMessage="No rows for this cut."
+          itemName={{ one: 'row', other: 'rows' }}
+        />
       </div>
     );
   }

@@ -7,6 +7,9 @@ import { applyLiveCopy } from '../../lib/dashboard/facts';
 import { packDashboardLayout, suggestedTableSpan } from '../../lib/dashboard/layout';
 import { harmonizePalette } from '../../lib/dashboard/palettes';
 import { DateRangePicker, type DateRangeValue } from '../arc/date-range-picker/date-range-picker';
+import { ChipGroup } from '../arc/chip-group/chip-group';
+import { FilterToolbar } from '../arc/filter-toolbar/filter-toolbar';
+import { SegmentedControl } from '../ui/SegmentedControl';
 import { WidgetCard } from './WidgetCard';
 
 const COLS = 12;
@@ -112,7 +115,14 @@ export function DashboardCanvas({
   return (
     <div
       className={`${spec.theme.fontFamily} dash-board dash-page w-full`}
-      style={{ color: palette.text }}
+      style={{
+        color: palette.text,
+        ['--series-1' as string]: palette.chart[0],
+        ['--series-2' as string]: palette.chart[1],
+        ['--series-3' as string]: palette.chart[2],
+        ['--series-4' as string]: palette.chart[3],
+        ['--accent' as string]: palette.accent,
+      }}
       data-ssr={ssr ? '1' : undefined}
     >
       <header className="mb-4 w-full">
@@ -155,43 +165,44 @@ export function DashboardCanvas({
           </select>
         )}
         {slicerValues.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {slicerValues.map((value) => (
-              <button
-                key={value}
-                type="button"
-                className="rounded-full border px-2 py-0.5 text-[11px]"
-                style={{
-                  borderColor: slicer === value ? palette.accent : palette.border,
-                  background: slicer === value ? palette.accentSoft : 'transparent',
-                  color: slicer === value ? palette.accent : palette.muted,
-                }}
-                onClick={() => setSlicer((current) => current === value ? '' : value)}
-              >
-                {value}
-              </button>
-            ))}
-          </div>
+          <ChipGroup
+            options={slicerValues.map((value) => ({ value, label: value }))}
+            value={slicer ? [slicer] : []}
+            onValueChange={(vals) => setSlicer(vals[0] || '')}
+            label={prettyField(slicerField) || 'Slice'}
+            multiple={false}
+            maxVisible={6}
+          />
         )}
-        <button
-          type="button"
-          className="rounded-full border px-3 py-1 text-[11px]"
-          style={{ borderColor: palette.border, color: compare === 'none' ? palette.muted : palette.accent }}
-          onClick={() => setCompare((c) => c === 'none' ? 'previous-period' : c === 'previous-period' ? 'previous-year' : 'none')}
-        >
-          {compare === 'none' ? 'Compare period' : compare === 'previous-period' ? 'Vs previous period' : 'Vs last year'}
-        </button>
-        {filters.map((filter) => (
-          <button
-            key={`${filter.field}:${filter.value}`}
-            type="button"
-            className="rounded-full px-2 py-0.5 text-[11px]"
-            style={{ background: palette.accentSoft, color: palette.accent }}
-            onClick={() => setFilters((current) => current.filter((f) => f !== filter))}
-          >
-            {filter.field} = {filter.value} ×
-          </button>
-        ))}
+        <div className="min-w-[280px] max-w-md">
+          <SegmentedControl
+            options={[
+              { label: 'Actual', value: 'none' },
+              { label: 'Vs period', value: 'previous-period' },
+              { label: 'Vs year', value: 'previous-year' },
+            ]}
+            value={compare}
+            onChange={(value) => setCompare(value as typeof compare)}
+          />
+        </div>
+        <FilterToolbar
+          filters={filters.map((filter) => ({
+            id: `${filter.field}:${filter.value}`,
+            label: `${prettyField(filter.field)}: ${filter.value}`,
+            value: String(filter.value),
+          }))}
+          onRemove={(id) => setFilters((current) => current.filter((f) => `${f.field}:${f.value}` !== id))}
+          onClearAll={() => setFilters([])}
+          label="Filters"
+          addFilter={{
+            fields: fields.dimensions.map((d) => ({
+              id: d,
+              label: prettyField(d),
+              options: [...new Set((datasets[0]?.data || []).map((row) => String(row[d] ?? '')).filter(Boolean))].slice(0, 12),
+            })),
+            onAdd: (chip, field) => addFilter(field.id, String(chip.value || chip.label)),
+          }}
+        />
         {drill.length > 0 && (
           <nav className="text-[11px]" style={{ color: palette.muted }}>
             {['All', ...drill].map((crumb, i) => (

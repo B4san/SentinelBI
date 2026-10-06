@@ -126,10 +126,16 @@ describe('API app factory', () => {
   });
 
   it('serves sample /d pages', async () => {
-    const res = await fetch(`${url}/d/sample-sales-command-center-light`);
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toMatch(/<!DOCTYPE html>/i);
+    for (const id of [
+      'sample-sales-command-center-light',
+      'sample-web-funnel-flow-light',
+      'sample-finance-command-center-light',
+    ]) {
+      const res = await fetch(`${url}/d/${id}`);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toMatch(/<!DOCTYPE html>/i);
+    }
   });
 
   it('generates a fallback dashboard without a key', async () => {
@@ -148,6 +154,22 @@ describe('API app factory', () => {
     expect(body.fallbackReason).toBeTruthy();
     expect(body.spec.widgets.length).toBeGreaterThan(0);
     expect(body.attempts?.some((a: { keySource?: string }) => a.keySource === 'none')).toBe(true);
+  });
+
+  it('generates a fallback executive report without a key', async () => {
+    const res = await fetch(`${url}/api/reports/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Sales',
+        datasets: [{ id: 'ds', name: 'Sales', data: SAMPLE_SALES_ROWS.slice(0, 40) }],
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.source).toBe('fallback');
+    expect(body.markdown).toMatch(/Executive Summary/);
+    expect(body.facts.rowCount).toBe(40);
   });
 });
 

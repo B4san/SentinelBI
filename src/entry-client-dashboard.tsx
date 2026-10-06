@@ -1,4 +1,4 @@
-import { hydrateRoot } from 'react-dom/client';
+import { createRoot } from 'react-dom/client';
 import { DashboardCanvas } from './components/dashboard/DashboardCanvas';
 import './index.css';
 import type { DashboardDataset, DashboardSpec } from './lib/dashboard/types';
@@ -9,5 +9,5 @@ const state = JSON.parse(raw) as { spec: DashboardSpec; datasets: DashboardDatas
 if (node && state.spec) {
   document.documentElement.classList.toggle('dark', state.spec.theme.palette.mode === 'dark');
   document.documentElement.setAttribute('data-theme', state.spec.theme.palette.mode);
-  hydrateRoot(node, <DashboardCanvas spec={state.spec} datasets={state.datasets} />);
+  createRoot(node).render(<DashboardCanvas spec={state.spec} datasets={state.datasets} />);
 }

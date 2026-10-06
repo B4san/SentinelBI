@@ -92,8 +92,10 @@ export function prepareChartSeries(
   }
 
   const aggregation = widget.aggregation || inferAggregation(yField);
-  const seriesFields = (knownSeries.length ? knownSeries.map((s) => s.field) : yField && names.has(yField) ? [yField] : [])
-    .filter((field) => field && (field.startsWith('__') || names.has(field)));
+  const seriesFields = [
+    ...(knownSeries.length ? knownSeries.map((s) => s.field) : yField && names.has(yField) ? [yField] : []),
+    ...(widget.targetField && names.has(widget.targetField) ? [widget.targetField] : []),
+  ].filter((field, i, arr) => field && (field.startsWith('__') || names.has(field)) && arr.indexOf(field) === i);
   const units = new Map<string, string>();
   for (const field of seriesFields) units.set(field, unitForField(field));
   const primaryUnit = yField ? unitForField(yField) : units.get(seriesFields[0] || '');

@@ -192,6 +192,50 @@ export const COMPONENT_CATALOG: CatalogEntry[] = [
     interactions: ['drill'],
     kind: 'custom',
   },
+  {
+    id: 'arc.filter-toolbar',
+    description: 'Arc filter toolbar with add-filter menu',
+    when: 'The canvas always mounts this for live filters. Do not emit as a widget; pick chart/kpi/table ids instead.',
+    encodings: ['control'],
+    min: { w: 12, h: 1 },
+    max: { w: 12, h: 2 },
+    example: '{"type":"section","componentId":"arc.filter-toolbar","title":"Filters"}',
+    interactions: ['filter'],
+    kind: 'control',
+  },
+  {
+    id: 'arc.chip-group',
+    description: 'Facet chip group for a dimension slicer',
+    when: 'Slicing a board by a low-cardinality dimension. The renderer mounts chips from the dataset; you still pick chart encodings.',
+    encodings: ['dimension values'],
+    min: { w: 4, h: 1 },
+    max: { w: 12, h: 2 },
+    example: '{"type":"section","componentId":"arc.chip-group","title":"Region"}',
+    interactions: ['filter'],
+    kind: 'control',
+  },
+  {
+    id: 'planes.segmented-control',
+    description: 'Planes segmented control (period compare)',
+    when: 'Switch actual vs previous-period vs previous-year. Mounted on the canvas.',
+    encodings: ['none'],
+    min: { w: 4, h: 1 },
+    max: { w: 6, h: 2 },
+    example: '{"type":"section","componentId":"planes.segmented-control","title":"Compare"}',
+    interactions: ['period-compare'],
+    kind: 'control',
+  },
+  {
+    id: 'arc.badge',
+    description: 'Arc badge for filter chips and status',
+    when: 'Call out an active filter or polarity on a KPI. Renderer applies badges automatically.',
+    encodings: ['label'],
+    min: { w: 2, h: 1 },
+    max: { w: 4, h: 2 },
+    example: '{"type":"kpi","componentId":"arc.badge","title":"On track"}',
+    interactions: [],
+    kind: 'control',
+  },
 ];
 
 export function catalogPromptBlock(): string {
@@ -222,8 +266,8 @@ export function nearestComponent(id?: string, type?: string, chartType?: string)
   }
   if (id) {
     const exact = COMPONENT_CATALOG.find((c) => c.id === id);
-    if (exact) return exact;
-    const fuzzy = COMPONENT_CATALOG.find((c) => id.includes(c.id.split('.')[1] || c.id) || c.id.includes(id));
+    if (exact && exact.kind !== 'control') return exact;
+    const fuzzy = COMPONENT_CATALOG.find((c) => c.kind !== 'control' && (id.includes(c.id.split('.')[1] || c.id) || c.id.includes(id)));
     if (fuzzy) return fuzzy;
   }
   if (type === 'kpi') return COMPONENT_CATALOG.find((c) => c.id === 'arc.metric-card')!;

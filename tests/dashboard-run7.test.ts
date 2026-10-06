@@ -92,16 +92,32 @@ describe('Arc prompt', () => {
     }
     expect(promptCatalog()).toBe(block);
     expect(ARC_DESIGN_GUIDE).toMatch(/NEVER state numbers/i);
-    expect(promptGuideTokenEstimate()).toBeLessThan(6000);
+    expect(promptGuideTokenEstimate()).toBeLessThan(9000);
   });
 
   it('validates both example specs against the schema', () => {
     const editorial = validateDashboardSpec(EXAMPLE_SPECS.editorial);
     const command = validateDashboardSpec(EXAMPLE_SPECS['command-center']);
+    const sales = validateDashboardSpec(EXAMPLE_SPECS.sales);
+    const web = validateDashboardSpec(EXAMPLE_SPECS.web);
+    const finance = validateDashboardSpec(EXAMPLE_SPECS.finance);
     expect(editorial.widgets.length).toBeGreaterThan(5);
     expect(command.widgets.length).toBeGreaterThan(5);
+    expect(sales.widgets.some((w) => w.componentId === 'arc.gauge')).toBe(true);
+    expect(web.widgets.some((w) => w.componentId === 'arc.waffle-chart')).toBe(true);
+    expect(finance.widgets.some((w) => w.componentId === 'arc.slope-chart')).toBe(true);
     expect(editorial.archetype).toBe('editorial');
     expect(command.archetype).toBe('command-center');
+  });
+
+  it('serves sales/web/finance sample boards from the richer example specs', async () => {
+    const { sampleFromId } = await import('../src/server/app');
+    const sales = sampleFromId('sample-sales-command-center-light');
+    const web = sampleFromId('sample-web-funnel-flow-light');
+    const finance = sampleFromId('sample-finance-command-center-light');
+    expect(sales?.spec.widgets.some((w) => w.componentId === 'arc.gauge')).toBe(true);
+    expect(web?.spec.widgets.some((w) => w.componentId === 'arc.waffle-chart')).toBe(true);
+    expect(finance?.spec.widgets.some((w) => w.componentId === 'arc.slope-chart')).toBe(true);
   });
 
   it('builds a prompt that names every catalog component', () => {

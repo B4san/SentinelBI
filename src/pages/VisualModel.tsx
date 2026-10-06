@@ -9,8 +9,6 @@ import {
   BarChart2, Edit3, Save, RefreshCw, BookmarkPlus, Palette,
 } from 'lucide-react';
 import { toCanvas } from 'html-to-image';
-import { jsPDF } from 'jspdf';
-import PptxGenJS from 'pptxgenjs';
 import { ExecutiveReportBuilder } from '../components/ExecutiveReportBuilder';
 import { DashboardCanvas, WidgetInspector } from '../components/dashboard/DashboardCanvas';
 import { generateDashboardSpec, updateWidget } from '../lib/dashboard/generate';
@@ -20,6 +18,18 @@ import { toDashboardDatasets } from '../lib/sampleData';
 import type { DashboardSpec, LayoutArchetype } from '../lib/dashboard/types';
 import { LAYOUT_ARCHETYPES } from '../lib/dashboard/types';
 import { ThinkingLoader } from '../components/shell/ThinkingLoader';
+import { buildNativePdf } from '../lib/export/pdfNative';
+import { buildNativePptx } from '../lib/export/pptxNative';
+
+function downloadBuffer(buffer: ArrayBuffer, filename: string, mime: string) {
+  const blob = new Blob([buffer], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 export function VisualModel() {
   const { spaceId } = useParams();
@@ -110,43 +120,34 @@ export function VisualModel() {
   };
 
   const handleExportPDF = async () => {
+    if (!spec) return;
     setIsExporting(true);
     try {
-      const reportContent = activeSpace.executiveReport?.summary || 'No executive report generated yet.';
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      pdf.setFontSize(22);
-      pdf.text(activeSpace.title, 20, 28);
-      pdf.setFontSize(11);
-      const split = pdf.splitTextToSize(reportContent.replace(/[#*]/g, ''), 170);
-      pdf.text(split.slice(0, 40), 20, 42);
-      const element = document.getElementById('exportable-space');
-      if (element && activeTab === 'dashboard') {
-        const canvas = await toCanvas(element, { backgroundColor: '#ffffff', pixelRatio: 2 });
-        pdf.addPage('l');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 10, 10, pdfWidth - 20, Math.min(pdfHeight, 190));
-      }
-      pdf.save(`${activeSpace.title.replace(/\s+/g, '_')}_Report.pdf`);
+      const buffer = buildNativePdf({
+        spec,
+        datasets,
+        reportText: activeSpace.executiveReport?.markdown || activeSpace.executiveReport?.summary,
+      });
+      downloadBuffer(buffer, `${activeSpace.title.replace(/\s+/g, '_')}_Report.pdf`, 'application/pdf');
     } finally {
       setIsExporting(false);
     }
   };
 
   const handleExportPPTX = async () => {
+    if (!spec) return;
     setIsExporting(true);
     try {
-      const pres = new PptxGenJS();
-      const slide = pres.addSlide();
-      slide.addText(activeSpace.title, { x: 0.6, y: 2, w: '85%', fontSize: 32, bold: true });
-      slide.addText(spec?.narrative?.headline || 'Executive operations review', { x: 0.6, y: 2.8, w: '85%', fontSize: 16 });
-      const element = document.getElementById('exportable-space');
-      if (element) {
-        const canvas = await toCanvas(element, { backgroundColor: '#ffffff', pixelRatio: 2 });
-        const dash = pres.addSlide();
-        dash.addImage({ data: canvas.toDataURL('image/png'), x: 0.4, y: 0.4, w: 9.2, h: 5.1 });
-      }
-      await pres.writeFile({ fileName: `${activeSpace.title.replace(/\s+/g, '_')}_Presentation.pptx` });
+      const buffer = await buildNativePptx({
+        spec,
+        datasets,
+        report: activeSpace.executiveReport || null,
+      });
+      downloadBuffer(
+        buffer,
+        `${activeSpace.title.replace(/\s+/g, '_')}_Presentation.pptx`,
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      );
     } finally {
       setIsExporting(false);
     }

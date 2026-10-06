@@ -37,10 +37,12 @@ export function dropDuplicateEncodings(spec: DashboardSpec, datasets: DashboardD
 export function finalizeDashboardSpec(
   spec: DashboardSpec,
   datasets: DashboardDataset[],
-  opts: { verifyCopy?: boolean } = {},
+  opts: { verifyCopy?: boolean; keepCuts?: boolean } = {},
 ): DashboardSpec {
   const repaired = repairCatalogWidgets(spec, datasets);
-  const unique = dropLowInformationCharts(dropDuplicateEncodings(repaired, datasets), datasets);
+  const unique = opts.keepCuts
+    ? dropDuplicateEncodings(repaired, datasets)
+    : dropLowInformationCharts(dropDuplicateEncodings(repaired, datasets), datasets);
   const packed = packDashboardLayout(unique, datasets);
   const computed = attachComputedFacts(packed, datasets);
   const verified = opts.verifyCopy === false ? computed : rewriteUnverifiedCopy(computed, datasets);
