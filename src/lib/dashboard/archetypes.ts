@@ -82,17 +82,21 @@ function editorialSlots(kpiCount: number): ArchetypeSlot[] {
   const leftKpi = n > 0;
   const slots: ArchetypeSlot[] = [
     { type: 'section', layout: { x: 0, y: 0, w: 12, h: 2 } },
-    { type: 'insight', layout: { x: 0, y: 2, w: 5, h: leftKpi ? 3 : 5 }, featured: true, role: 'featured' },
+    { type: 'insight', layout: { x: 0, y: 2, w: 5, h: 2 }, featured: true, role: 'featured' },
     { type: 'chart', layout: { x: 5, y: 2, w: 7, h: 6 }, featured: true, prefer: ['area', 'bar'] },
   ];
   if (leftKpi) {
-    slots.push({ type: 'kpi', layout: { x: 0, y: 5, w: 5, h: 3 }, role: 'support' });
+    slots.push({ type: 'kpi', layout: { x: 0, y: 4, w: 5, h: 4 }, role: 'hero' });
   }
   const remaining = Math.max(0, n - (leftKpi ? 1 : 0));
   if (remaining > 0) {
     slots.push(...kpiRow(Math.min(3, remaining), 8, 2));
   }
-  slots.push({ type: 'chart', layout: { x: 0, y: remaining > 0 ? 10 : 8, w: 12, h: 5 }, prefer: ['horizontal-bar', 'bar'] });
+  const y = remaining > 0 ? 10 : 8;
+  slots.push(
+    { type: 'chart', layout: { x: 0, y, w: 6, h: 5 }, prefer: ['bar'] },
+    { type: 'chart', layout: { x: 6, y, w: 6, h: 5 }, prefer: ['donut', 'bar'] },
+  );
   return slots;
 }
 
@@ -166,12 +170,12 @@ function mosaicSlots(kpiCount: number): ArchetypeSlot[] {
   } else if (n === 7) {
     slots.push(
       { type: 'kpi', layout: { x: 0, y: 0, w: 6, h: 3 }, role: 'hero' },
-      { type: 'kpi', layout: { x: 6, y: 0, w: 3, h: 3 }, role: 'support' },
-      { type: 'kpi', layout: { x: 9, y: 0, w: 3, h: 3 }, role: 'support' },
+      { type: 'kpi', layout: { x: 6, y: 0, w: 6, h: 3 }, role: 'support' },
       { type: 'kpi', layout: { x: 0, y: 3, w: 4, h: 2 }, role: 'support' },
       { type: 'kpi', layout: { x: 4, y: 3, w: 4, h: 2 }, role: 'support' },
       { type: 'kpi', layout: { x: 8, y: 3, w: 4, h: 2 }, role: 'support' },
-      { type: 'kpi', layout: { x: 0, y: 5, w: 12, h: 2 }, role: 'support' },
+      { type: 'kpi', layout: { x: 0, y: 5, w: 6, h: 2 }, role: 'support' },
+      { type: 'kpi', layout: { x: 6, y: 5, w: 6, h: 2 }, role: 'support' },
     );
   } else {
     slots.push(
@@ -187,8 +191,8 @@ function mosaicSlots(kpiCount: number): ArchetypeSlot[] {
   }
   const after = Math.max(...slots.map((s) => s.layout.y + s.layout.h));
   slots.push(
-    { type: 'chart', layout: { x: 0, y: after, w: 8, h: 5 }, featured: true, prefer: ['bar', 'area'] },
-    { type: 'insight', layout: { x: 8, y: after, w: 4, h: 5 } },
+    { type: 'chart', layout: { x: 0, y: after, w: 12, h: 5 }, featured: true, prefer: ['area', 'bar'] },
+    { type: 'insight', layout: { x: 0, y: after + 5, w: 12, h: 2 }, role: 'strip' },
   );
   return slots;
 }
@@ -198,11 +202,11 @@ function comparisonSlots(kpiCount: number): ArchetypeSlot[] {
   const slots: ArchetypeSlot[] = [
     { type: 'kpi', layout: { x: 0, y: 0, w: 6, h: 3 }, role: 'compare-a' },
     { type: 'kpi', layout: { x: 6, y: 0, w: 6, h: 3 }, role: 'compare-b' },
-    { type: 'chart', layout: { x: 0, y: 3, w: 6, h: 6 }, featured: true, role: 'compare-a', prefer: ['bar'] },
-    { type: 'chart', layout: { x: 6, y: 3, w: 6, h: 6 }, featured: true, role: 'compare-b', prefer: ['bar', 'horizontal-bar'] },
-    { type: 'insight', layout: { x: 0, y: 9, w: 12, h: 2 }, role: 'strip' },
+    { type: 'chart', layout: { x: 0, y: 3, w: 6, h: 5 }, featured: true, role: 'compare-a', prefer: ['bar'] },
+    { type: 'chart', layout: { x: 6, y: 3, w: 6, h: 5 }, featured: true, role: 'compare-b', prefer: ['bar'] },
+    { type: 'insight', layout: { x: 0, y: 8, w: 12, h: 2 }, role: 'strip' },
   ];
-  if (extra > 0) slots.push(...kpiRow(Math.min(2, extra), 11, 2));
+  if (extra > 0) slots.push(...kpiRow(Math.min(2, extra), 10, 2));
   return slots;
 }
 
@@ -219,11 +223,11 @@ function storyArcSlots(kpiCount: number): ArchetypeSlot[] {
 function splitSlots(kpiCount: number): ArchetypeSlot[] {
   const n = Math.max(1, Math.min(3, kpiCount));
   const slots: ArchetypeSlot[] = [
-    { type: 'insight', layout: { x: 0, y: 0, w: 4, h: 5 }, featured: true, role: 'featured' },
-    { type: 'chart', layout: { x: 4, y: 0, w: 8, h: 5 }, featured: true, prefer: ['bar', 'area'] },
+    { type: 'insight', layout: { x: 0, y: 0, w: 4, h: 4 }, featured: true, role: 'featured' },
+    { type: 'chart', layout: { x: 4, y: 0, w: 8, h: 4 }, featured: true, prefer: ['bar', 'area'] },
   ];
-  slots.push(...kpiRow(n, 5, 2));
-  slots.push({ type: 'chart', layout: { x: 0, y: 7, w: 12, h: 5 }, prefer: ['line', 'horizontal-bar'] });
+  slots.push(...kpiRow(n, 4, 2));
+  slots.push({ type: 'chart', layout: { x: 0, y: 6, w: 12, h: 5 }, prefer: ['line', 'bar'] });
   return slots;
 }
 

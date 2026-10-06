@@ -333,7 +333,7 @@ describe('archetype openings', () => {
     const mosaic = slotsForArchetype('metric-mosaic', 8).filter((s) => s.type === 'kpi');
     expect(new Set(mosaic.map((s) => `${s.layout.w}x${s.layout.h}`)).size).toBeGreaterThan(1);
     const editorialInsight = slotsForArchetype('editorial', 4).find((s) => s.type === 'insight');
-    expect(editorialInsight?.layout.h).toBeLessThanOrEqual(5);
+    expect(editorialInsight?.layout.h).toBeLessThanOrEqual(3);
   });
 });
 

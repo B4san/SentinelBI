@@ -299,6 +299,15 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
     if (usedEncodings.has(`${encoding}:${chartType}`) && slot.prefer?.[1]) {
       chartType = slot.prefer[1];
     }
+    const categoryCount = xField && cats.includes(xField)
+      ? new Set((primary.data || []).map((row) => String(row[xField] ?? ''))).size
+      : 0;
+    if (chartType === 'horizontal-bar' && categoryCount > 0 && categoryCount <= 4) {
+      chartType = 'bar';
+    }
+    if ((chartType === 'line' || chartType === 'stepped-line') && times[0] && xField === times[0] && slot.featured) {
+      chartType = 'area';
+    }
     usedTypes.add(chartType);
     usedEncodings.add(`${encoding}:${chartType}`);
 

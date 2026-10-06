@@ -30,6 +30,10 @@ const D3_TYPES = new Set([
 ]);
 
 function widthFromGrid(el: HTMLElement, cols: number): number {
+  const item = el.closest('.dash-grid > *') as HTMLElement | null;
+  if (item && item.clientWidth > 80) {
+    return Math.max(160, Math.round(item.clientWidth - 28));
+  }
   const grid = el.closest('.dash-grid') as HTMLElement | null;
   if (grid && cols > 0) {
     const styles = getComputedStyle(grid);
@@ -76,12 +80,16 @@ function usePlotBox(cols: number): [React.RefObject<HTMLDivElement | null>, { wi
       }
     };
     update();
+    const later = window.setTimeout(update, 80);
     const ro = new ResizeObserver(update);
     ro.observe(el);
     if (el.parentElement) ro.observe(el.parentElement);
     const grid = el.closest('.dash-grid');
     if (grid) ro.observe(grid);
-    return () => ro.disconnect();
+    return () => {
+      window.clearTimeout(later);
+      ro.disconnect();
+    };
   }, [cols]);
 
   return [ref, box];
@@ -206,10 +214,10 @@ export function ChartRenderer({
       chart = (
         <LineChart width={plotWidth} height={plotHeight} data={data} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
           {grid}
-          <XAxis dataKey={xKey} stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => formatTick(v, xKey)} minTickGap={16} />
+          <XAxis dataKey={xKey} stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => formatTick(v, xKey)} minTickGap={10} />
           <YAxis stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} width={52} tickFormatter={(v) => formatAxisNumber(Number(v), widget.yField)} />
           {tooltip}
-          <Line type={type === 'stepped-line' ? 'stepAfter' : 'monotone'} dataKey={yKey} name={prettyField(yKey)} stroke={color} strokeWidth={2.25} dot={false} isAnimationActive={false} />
+          <Line type={type === 'stepped-line' ? 'stepAfter' : 'monotone'} dataKey={yKey} name={prettyField(yKey)} stroke={color} strokeWidth={palette.mode === 'dark' ? 2.6 : 2.25} dot={false} isAnimationActive={false} />
         </LineChart>
       );
     } else if (['area', 'stacked-area'].includes(type)) {
@@ -218,15 +226,15 @@ export function ChartRenderer({
         <AreaChart width={plotWidth} height={plotHeight} data={data} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={color} stopOpacity={0.4} />
-              <stop offset="95%" stopColor={color} stopOpacity={0} />
+              <stop offset="5%" stopColor={color} stopOpacity={palette.mode === 'dark' ? 0.5 : 0.4} />
+              <stop offset="95%" stopColor={color} stopOpacity={palette.mode === 'dark' ? 0.08 : 0.02} />
             </linearGradient>
           </defs>
           {grid}
-          <XAxis dataKey={xKey} stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => formatTick(v, xKey)} minTickGap={16} />
+          <XAxis dataKey={xKey} stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => formatTick(v, xKey)} minTickGap={10} />
           <YAxis stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} width={52} tickFormatter={(v) => formatAxisNumber(Number(v), widget.yField)} />
           {tooltip}
-          <Area type="monotone" dataKey={yKey} name={prettyField(yKey)} stroke={color} fill={`url(#${gradId})`} strokeWidth={2.4} isAnimationActive={false} />
+          <Area type="monotone" dataKey={yKey} name={prettyField(yKey)} stroke={color} fill={`url(#${gradId})`} strokeWidth={palette.mode === 'dark' ? 2.7 : 2.4} isAnimationActive={false} />
         </AreaChart>
       );
     } else {
@@ -246,12 +254,12 @@ export function ChartRenderer({
             </>
           ) : (
             <>
-              <XAxis dataKey={xKey} stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => formatTick(v, xKey)} minTickGap={18} />
+              <XAxis dataKey={xKey} stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => formatTick(v, xKey)} minTickGap={10} />
               <YAxis stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} width={52} tickFormatter={(v) => formatAxisNumber(Number(v), widget.yField)} />
             </>
           )}
           {tooltip}
-          <Bar dataKey={yKey} name={prettyField(yKey)} fill={color} radius={type === 'horizontal-bar' ? [0, 6, 6, 0] : [6, 6, 0, 0]} isAnimationActive={false} maxBarSize={36} />
+          <Bar dataKey={yKey} name={prettyField(yKey)} fill={color} radius={type === 'horizontal-bar' ? [0, 6, 6, 0] : [6, 6, 0, 0]} isAnimationActive={false} maxBarSize={data.length <= 4 ? 56 : 40} />
         </BarChart>
       );
     }

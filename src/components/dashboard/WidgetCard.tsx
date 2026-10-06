@@ -133,7 +133,7 @@ function WidgetBody({
     const hero = widget.role === 'hero' || widget.layout.h >= 4 || (widget.role === 'compare-a' || widget.role === 'compare-b') && widget.layout.h >= 3;
     const compare = widget.role === 'compare-a' || widget.role === 'compare-b';
     return (
-      <div className={`h-full flex flex-col justify-between ${hero ? 'px-5 py-4' : 'px-4 py-3'}`}>
+      <div className={`h-full flex flex-col ${hero ? 'justify-between px-5 py-4' : 'justify-center gap-1.5 px-4 py-3'}`}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
