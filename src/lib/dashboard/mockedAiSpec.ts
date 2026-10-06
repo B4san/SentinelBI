@@ -42,13 +42,8 @@ export function mockedAiSpec(datasets: DashboardDataset[]): DashboardSpec {
         layout: { x: 8, y: 3, w: 4, h: 3 },
         datasetId: ds,
         componentId: 'sbi.kpi-drilldown',
-        measure: {
-          kind: 'margin',
-          numerator: { field: 'revenue', agg: 'sum' },
-          denominator: { field: 'gross_margin', agg: 'sum' },
-          format: 'percent',
-        },
-        kpi: { value: '', format: 'percent' },
+        yField: 'gross_margin',
+        kpi: { value: '', field: 'gross_margin', aggregation: 'avg', format: 'percent' },
       },
       {
         id: 'trend',

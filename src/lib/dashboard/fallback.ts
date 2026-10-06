@@ -106,10 +106,17 @@ function measureKpi(
   };
 }
 
+function preferMeasures(names: string[]): string[] {
+  return [...names].sort((a, b) => {
+    const rank = (name: string) => (/rev|gmv|sales/i.test(name) ? 0 : /session|conversion|unit/i.test(name) ? 1 : 2);
+    return rank(a) - rank(b);
+  });
+}
+
 export function buildBusinessKpis(dataset: DashboardDataset): DerivedKpi[] {
   const rows = dataset.data || [];
   const fields = classifyFields(dataset);
-  const nums = fields.measures;
+  const nums = preferMeasures(fields.measures);
   const cats = fields.dimensions;
   const times = fields.time;
   const kpis: DerivedKpi[] = [];
@@ -203,7 +210,7 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
   const fields = classifyFields(primary);
   const findings = analyzeDataset(primary);
   const story = narrativeFromFindings(findings, ctx.intent);
-  const nums = fields.measures;
+  const nums = preferMeasures(fields.measures);
   const cats = fields.dimensions;
   const times = fields.time;
   const archetype = ctx.archetype || pick(rng, LAYOUT_ARCHETYPES);
@@ -395,7 +402,7 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
     sections: [{ id: 'main', title: 'Primary view' }],
     widgets: widgets.filter((w) => w.type !== 'kpi' || !isFillerKpi(w)),
   };
-  return finalizeDashboardSpec(spec, datasets);
+  return finalizeDashboardSpec(spec, datasets, { verifyCopy: false });
 }
 
 function deriveTitle(intent: string | undefined, archetype: LayoutArchetype): string {

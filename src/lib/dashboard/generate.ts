@@ -27,9 +27,9 @@ function fallbackSpec(
       widgets: ctx.existing.widgets.map((w) =>
         w.id === ctx.widgetId ? varyWidget(w, ctx.datasets, ctx.seed || 1) : w,
       ),
-    }, ctx.datasets);
+    }, ctx.datasets, { verifyCopy: false });
   }
-  return finalizeDashboardSpec(buildFallbackDashboard(ctx), ctx.datasets);
+  return buildFallbackDashboard(ctx);
 }
 
 export async function generateDashboardOnServer(
