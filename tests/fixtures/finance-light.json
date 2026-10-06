@@ -1,0 +1,404 @@
+{
+  "title": "Meridian Finance & Ops",
+  "intent": "Power BI grade, even more amazing than Power BI: a CFO operating review. Revenue and EBITDA trend by business unit, opex vs budget variance by cost center, gross margin %, DSO risk, and revenue per head.",
+  "archetype": "comparison",
+  "narrative": {
+    "headline": "Revenue accelerated",
+    "body": "Revenue rose 16% in the second half of the window versus the first ($46.9M → $54.2M). Cloud generated $43.1M in revenue, 43% of the total. Hardware contributed $15.0M (15% of revenue), well below Cloud."
+  },
+  "theme": {
+    "palette": {
+      "id": "violet",
+      "label": "Violet",
+      "mode": "light",
+      "background": "transparent",
+      "surface": "#ffffff",
+      "text": "#1e1b4b",
+      "muted": "#6b7280",
+      "accent": "#7c3aed",
+      "accentSoft": "#ede9fe",
+      "border": "#e4e4f0",
+      "chart": [
+        "#7c3aed",
+        "#2563eb",
+        "#db2777",
+        "#0891b2",
+        "#d97706",
+        "#16a34a"
+      ]
+    },
+    "fontFamily": "font-sans",
+    "headingFont": "font-outfit",
+    "radius": "rounded-2xl",
+    "density": "comfortable"
+  },
+  "widgets": [
+    {
+      "id": "kpi-0",
+      "type": "kpi",
+      "title": "Gross margin",
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 3
+      },
+      "role": "compare-a",
+      "datasetId": "ds-finance",
+      "yField": "revenue",
+      "aggregation": "sum",
+      "color": "#7c3aed",
+      "polarity": "higher-is-better",
+      "componentId": "arc.metric-card",
+      "measure": {
+        "kind": "margin",
+        "numerator": {
+          "field": "revenue",
+          "agg": "sum"
+        },
+        "denominator": {
+          "field": "cogs",
+          "agg": "sum"
+        },
+        "format": "percent"
+      },
+      "kpi": {
+        "value": "61.7%",
+        "trend": "+0.3 pp vs first half",
+        "field": "revenue",
+        "aggregation": "sum",
+        "format": "percent",
+        "delta": 0.2940116334989029,
+        "sparkline": [
+          0.6175336848651544,
+          0.6126327712756409,
+          0.6155498174972539,
+          0.615274221335218,
+          0.6185674378434654,
+          0.6174614156466205,
+          0.6182333047470004,
+          0.6184116204413088
+        ],
+        "polarity": "higher-is-better"
+      }
+    },
+    {
+      "id": "kpi-1",
+      "type": "kpi",
+      "title": "Hardware opex vs budget",
+      "subtitle": "Hardware",
+      "layout": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 3
+      },
+      "role": "compare-b",
+      "datasetId": "ds-finance",
+      "yField": "opex",
+      "aggregation": "sum",
+      "filter": {
+        "field": "business_unit",
+        "op": "equals",
+        "value": "Hardware"
+      },
+      "color": "#2563eb",
+      "polarity": "lower-is-better",
+      "componentId": "arc.metric-card",
+      "measure": {
+        "kind": "difference",
+        "numerator": {
+          "field": "opex",
+          "agg": "sum"
+        },
+        "denominator": {
+          "field": "budget_opex",
+          "agg": "sum"
+        },
+        "format": "currency"
+      },
+      "kpi": {
+        "value": "$1.8M",
+        "trend": "+12.7% vs first half",
+        "field": "opex",
+        "aggregation": "sum",
+        "format": "currency",
+        "delta": 12.73117348298859,
+        "sparkline": [
+          189322,
+          216694,
+          219202,
+          233823,
+          224405,
+          241715,
+          239293,
+          262994
+        ],
+        "polarity": "lower-is-better"
+      }
+    },
+    {
+      "id": "chart-2",
+      "type": "chart",
+      "title": "Revenue by Business unit",
+      "layout": {
+        "x": 0,
+        "y": 3,
+        "w": 12,
+        "h": 5
+      },
+      "role": "compare-a",
+      "chartType": "bar",
+      "datasetId": "ds-finance",
+      "xField": "business_unit",
+      "yField": "revenue",
+      "componentId": "arc.bar-chart",
+      "series": [
+        {
+          "field": "revenue",
+          "style": "bar"
+        },
+        {
+          "field": "budget_opex",
+          "style": "dashed",
+          "label": "Budget opex"
+        }
+      ],
+      "targetField": "budget_opex",
+      "color": "#db2777",
+      "aggregation": "sum"
+    },
+    {
+      "id": "insight-4",
+      "type": "insight",
+      "title": "Revenue rose 16% in the second half of the window versus the",
+      "layout": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 2
+      },
+      "role": "strip",
+      "insight": {
+        "text": "Revenue rose 16% in the second half of the window versus the first ($46.9M → $54.2M).",
+        "tone": "positive"
+      }
+    },
+    {
+      "id": "chart-5",
+      "type": "chart",
+      "title": "COGS mix",
+      "layout": {
+        "x": 0,
+        "y": 10,
+        "w": 6,
+        "h": 5
+      },
+      "chartType": "treemap",
+      "datasetId": "ds-finance",
+      "xField": "business_unit",
+      "yField": "cogs",
+      "componentId": "arc.treemap",
+      "targetField": "budget_opex",
+      "color": "#16a34a",
+      "aggregation": "sum"
+    },
+    {
+      "id": "chart-6",
+      "type": "chart",
+      "title": "EBITDA by Business unit",
+      "layout": {
+        "x": 6,
+        "y": 10,
+        "w": 6,
+        "h": 5
+      },
+      "chartType": "bar",
+      "datasetId": "ds-finance",
+      "xField": "business_unit",
+      "yField": "ebitda",
+      "componentId": "arc.bar-chart",
+      "series": [
+        {
+          "field": "ebitda",
+          "style": "bar"
+        },
+        {
+          "field": "budget_opex",
+          "style": "dashed",
+          "label": "Budget opex"
+        }
+      ],
+      "targetField": "budget_opex",
+      "color": "#7c3aed",
+      "aggregation": "sum"
+    },
+    {
+      "id": "table-7",
+      "type": "table",
+      "title": "Business unit × Cost center by revenue",
+      "layout": {
+        "x": 0,
+        "y": 15,
+        "w": 12,
+        "h": 6
+      },
+      "datasetId": "ds-finance",
+      "componentId": "arc.sortable-data-table",
+      "columns": [
+        "business_unit",
+        "cost_center",
+        "month",
+        "revenue",
+        "cogs",
+        "opex"
+      ],
+      "table": {
+        "sort": {
+          "field": "revenue",
+          "dir": "desc"
+        },
+        "limit": 12,
+        "groupBy": [
+          "business_unit",
+          "cost_center"
+        ],
+        "measures": [
+          {
+            "field": "revenue",
+            "agg": "sum",
+            "format": "currency"
+          },
+          {
+            "field": "cogs",
+            "agg": "sum",
+            "format": "currency"
+          },
+          {
+            "field": "opex",
+            "agg": "sum",
+            "format": "currency"
+          }
+        ]
+      }
+    },
+    {
+      "id": "kpi-8",
+      "type": "kpi",
+      "title": "Opex vs budget",
+      "layout": {
+        "x": 0,
+        "y": 20,
+        "w": 6,
+        "h": 2
+      },
+      "role": "support",
+      "datasetId": "ds-finance",
+      "yField": "opex",
+      "aggregation": "sum",
+      "color": "#db2777",
+      "polarity": "lower-is-better",
+      "componentId": "arc.metric-card",
+      "measure": {
+        "kind": "difference",
+        "numerator": {
+          "field": "opex",
+          "agg": "sum"
+        },
+        "denominator": {
+          "field": "budget_opex",
+          "agg": "sum"
+        },
+        "format": "currency"
+      },
+      "kpi": {
+        "value": "$1.9M",
+        "trend": "+10.6% vs first half",
+        "field": "opex",
+        "aggregation": "sum",
+        "format": "currency",
+        "delta": 10.609870256727973,
+        "sparkline": [
+          190069,
+          217644,
+          238126,
+          238677,
+          237709,
+          253861,
+          219331,
+          267461
+        ],
+        "polarity": "lower-is-better"
+      }
+    },
+    {
+      "id": "kpi-9",
+      "type": "kpi",
+      "title": "EBITDA margin",
+      "layout": {
+        "x": 6,
+        "y": 20,
+        "w": 6,
+        "h": 2
+      },
+      "role": "support",
+      "datasetId": "ds-finance",
+      "yField": "ebitda",
+      "aggregation": "sum",
+      "color": "#0891b2",
+      "polarity": "higher-is-better",
+      "componentId": "arc.metric-card",
+      "measure": {
+        "kind": "ratio",
+        "numerator": {
+          "field": "ebitda",
+          "agg": "sum"
+        },
+        "denominator": {
+          "field": "revenue",
+          "agg": "sum"
+        },
+        "format": "percent"
+      },
+      "kpi": {
+        "value": "32.8%",
+        "trend": "+0.1 pp vs first half",
+        "field": "ebitda",
+        "aggregation": "sum",
+        "format": "percent",
+        "delta": 0.09399305288879667,
+        "sparkline": [
+          0.33302787659583816,
+          0.3240199344034984,
+          0.32610309805415505,
+          0.3261836090572873,
+          0.32935407558047297,
+          0.32923872880711624,
+          0.3282381694387325,
+          0.32620995937238156
+        ],
+        "polarity": "higher-is-better"
+      }
+    },
+    {
+      "id": "chart-trend",
+      "type": "chart",
+      "title": "Revenue trend",
+      "layout": {
+        "x": 0,
+        "y": 22,
+        "w": 12,
+        "h": 5
+      },
+      "role": "hero",
+      "chartType": "area",
+      "datasetId": "ds-finance",
+      "xField": "month",
+      "yField": "revenue",
+      "componentId": "arc.line-chart",
+      "compare": "previous-year",
+      "color": "#7c3aed",
+      "aggregation": "sum"
+    }
+  ]
+}

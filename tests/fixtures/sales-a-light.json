@@ -1,0 +1,266 @@
+{
+  "title": "Northstar Revenue Command",
+  "intent": "executive sales performance",
+  "archetype": "hero-kpi-rail",
+  "generatedBy": "nvidia/nemotron-3-super-120b-a12b:free",
+  "narrative": {
+    "headline": "Northstar Revenue Command",
+    "body": "Executive view of sales performance with trend, mix, and efficiency."
+  },
+  "theme": {
+    "palette": {
+      "id": "forest",
+      "label": "Ocean",
+      "mode": "light",
+      "background": "transparent",
+      "surface": "#ffffff",
+      "text": "#212121",
+      "muted": "#757575",
+      "accent": "#2e7d32",
+      "accentSoft": "#c8e6c9",
+      "border": "#e0e0e0",
+      "chart": [
+        "#2563eb",
+        "#0ea5e9",
+        "#14b8a6",
+        "#7c3aed",
+        "#f59e0b",
+        "#ef4444"
+      ]
+    },
+    "fontFamily": "font-sans",
+    "headingFont": "font-grotesk",
+    "radius": "rounded-2xl",
+    "density": "comfortable"
+  },
+  "widgets": [
+    {
+      "id": "hero-revenue",
+      "type": "kpi",
+      "title": "Revenue",
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 4
+      },
+      "datasetId": "ds-sales",
+      "yField": "revenue",
+      "componentId": "arc.metric-card",
+      "measure": {
+        "kind": "simple",
+        "field": "revenue",
+        "agg": "sum",
+        "format": "currency"
+      },
+      "polarity": "higher-is-better",
+      "role": "hero",
+      "color": "#2563eb",
+      "aggregation": "sum",
+      "kpi": {
+        "value": "$43.8M",
+        "trend": "-19.1% vs first half",
+        "polarity": "higher-is-better",
+        "delta": -19.054992639466846,
+        "sparkline": [
+          3516473,
+          3604848,
+          3845599,
+          4877518,
+          3895122,
+          4491701,
+          3573093,
+          3444905,
+          3265219,
+          2857639,
+          3113771,
+          3359369
+        ],
+        "format": "currency",
+        "field": "revenue"
+      }
+    },
+    {
+      "id": "kpi-gross-margin",
+      "type": "kpi",
+      "title": "Gross margin",
+      "layout": {
+        "x": 0,
+        "y": 4,
+        "w": 5,
+        "h": 2
+      },
+      "datasetId": "ds-sales",
+      "yField": "gross_margin",
+      "componentId": "arc.metric-card",
+      "measure": {
+        "kind": "weighted",
+        "numerator": {
+          "field": "gross_margin",
+          "agg": "avg"
+        },
+        "denominator": {
+          "field": "revenue",
+          "agg": "sum"
+        },
+        "format": "percent"
+      },
+      "polarity": "higher-is-better",
+      "color": "#0ea5e9",
+      "aggregation": "avg",
+      "kpi": {
+        "value": "27.7%",
+        "trend": "+1.6 pp vs first half",
+        "polarity": "higher-is-better",
+        "delta": 1.6384902363075493,
+        "sparkline": [
+          0.2728624403239812,
+          0.2726055705154588,
+          0.27405858783480247,
+          0.2590725083423979,
+          0.31050949187301796,
+          0.25259888396213664,
+          0.29282559899891014,
+          0.2897412219240245
+        ],
+        "format": "percent",
+        "field": "gross_margin"
+      }
+    },
+    {
+      "id": "kpi-aov",
+      "type": "kpi",
+      "title": "AOV",
+      "layout": {
+        "x": 5,
+        "y": 4,
+        "w": 4,
+        "h": 2
+      },
+      "datasetId": "ds-sales",
+      "componentId": "arc.metric-card",
+      "measure": {
+        "kind": "ratio",
+        "numerator": {
+          "field": "revenue",
+          "agg": "sum"
+        },
+        "denominator": {
+          "field": "revenue",
+          "agg": "count"
+        },
+        "format": "currency"
+      },
+      "polarity": "higher-is-better",
+      "color": "#14b8a6",
+      "aggregation": "sum",
+      "kpi": {
+        "value": "$68.5K",
+        "trend": "-19.1% vs first half",
+        "polarity": "higher-is-better",
+        "delta": -19.054992639466846,
+        "sparkline": [
+          65743.0125,
+          71343.4875,
+          85064.5875,
+          80739.675,
+          63036.1625,
+          65504.05,
+          54800.2875,
+          61834.45
+        ],
+        "format": "currency"
+      }
+    },
+    {
+      "id": "kpi-discount-rate",
+      "type": "kpi",
+      "title": "Discount rate",
+      "layout": {
+        "x": 9,
+        "y": 4,
+        "w": 3,
+        "h": 2
+      },
+      "datasetId": "ds-sales",
+      "componentId": "arc.metric-card",
+      "measure": {
+        "kind": "weighted",
+        "numerator": {
+          "field": "discount_rate",
+          "agg": "avg"
+        },
+        "denominator": {
+          "field": "revenue",
+          "agg": "sum"
+        },
+        "format": "percent"
+      },
+      "polarity": "lower-is-better",
+      "color": "#7c3aed",
+      "aggregation": "sum",
+      "kpi": {
+        "value": "14.3%",
+        "trend": "+1.4 pp vs first half",
+        "polarity": "lower-is-better",
+        "delta": 1.4230208377738973,
+        "sparkline": [
+          0.13841735823255744,
+          0.13594433409216222,
+          0.1315251643346886,
+          0.1403242221064179,
+          0.1366170807114091,
+          0.15205866068586593,
+          0.16172420103635407,
+          0.15360037022242462
+        ],
+        "format": "percent"
+      }
+    },
+    {
+      "id": "insight-strip",
+      "type": "insight",
+      "title": "North leads region at $11.0M, 25% of the total",
+      "layout": {
+        "x": 0,
+        "y": 6,
+        "w": 12,
+        "h": 2
+      },
+      "polarity": "higher-is-better",
+      "color": "#f59e0b",
+      "aggregation": "sum",
+      "insight": {
+        "title": "North leads region at $11.0M, 25% of the total",
+        "text": "Server will replace this with a computed fact. South is the smallest region at 13% share.",
+        "tone": "neutral"
+      }
+    },
+    {
+      "id": "trend-revenue",
+      "type": "chart",
+      "title": "Revenue trend",
+      "layout": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 6
+      },
+      "chartType": "area",
+      "datasetId": "ds-sales",
+      "xField": "order_date",
+      "yField": "revenue",
+      "componentId": "arc.brush-chart",
+      "measure": {
+        "kind": "simple",
+        "field": "revenue",
+        "agg": "sum",
+        "format": "currency"
+      },
+      "compare": "previous-period",
+      "polarity": "higher-is-better",
+      "color": "#ef4444",
+      "aggregation": "sum"
+    }
+  ]
+}

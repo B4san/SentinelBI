@@ -1,0 +1,190 @@
+import type { ProviderDefinition, ProviderId } from './types';
+
+export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
+  gemini: {
+    id: 'gemini',
+    label: 'Google Gemini',
+    description: 'Native Gemini API via the existing Google GenAI SDK.',
+    defaultBaseUrl: 'https://generativelanguage.googleapis.com',
+    defaultModel: 'gemini-2.5-flash',
+    envKey: 'GEMINI_API_KEY',
+    supportsModelList: true,
+    requiresApiKey: true,
+    compatible: 'gemini',
+    curatedModels: [
+      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+      { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+      { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+      { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
+      { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
+      { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview' },
+    ],
+  },
+  openrouter: {
+    id: 'openrouter',
+    label: 'OpenRouter',
+    description: 'One key for hundreds of models (OpenAI, Anthropic, Gemini, open source).',
+    defaultBaseUrl: 'https://openrouter.ai/api/v1',
+    defaultModel: 'openrouter/free',
+    envKey: 'OPENROUTER_API_KEY',
+    supportsModelList: true,
+    requiresApiKey: true,
+    compatible: 'openai',
+    extraHeaders: {
+      'HTTP-Referer': 'https://sentinelbi.local',
+      'X-Title': 'SentinelBI',
+    },
+    curatedModels: [
+      { id: 'openrouter/free', label: 'OpenRouter Free (auto-route)' },
+      { id: 'openai/gpt-4o-mini', label: 'GPT-4o Mini' },
+      { id: 'openai/gpt-4o', label: 'GPT-4o' },
+      { id: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet' },
+      { id: 'google/gemini-2.0-flash-001', label: 'Gemini 2.0 Flash' },
+      { id: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B' },
+    ],
+  },
+  openai: {
+    id: 'openai',
+    label: 'OpenAI',
+    description: 'Official OpenAI Chat Completions API.',
+    defaultBaseUrl: 'https://api.openai.com/v1',
+    defaultModel: 'gpt-4o-mini',
+    envKey: 'OPENAI_API_KEY',
+    supportsModelList: true,
+    requiresApiKey: true,
+    compatible: 'openai',
+    curatedModels: [
+      { id: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+      { id: 'gpt-4o', label: 'GPT-4o' },
+      { id: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
+      { id: 'o4-mini', label: 'o4 Mini' },
+    ],
+  },
+  groq: {
+    id: 'groq',
+    label: 'Groq',
+    description: 'Fast OpenAI-compatible inference.',
+    defaultBaseUrl: 'https://api.groq.com/openai/v1',
+    defaultModel: 'llama-3.3-70b-versatile',
+    envKey: 'GROQ_API_KEY',
+    supportsModelList: true,
+    requiresApiKey: true,
+    compatible: 'openai',
+    curatedModels: [
+      { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B' },
+      { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B Instant' },
+      { id: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B' },
+    ],
+  },
+  together: {
+    id: 'together',
+    label: 'Together AI',
+    description: 'Open-source models via an OpenAI-compatible API.',
+    defaultBaseUrl: 'https://api.together.xyz/v1',
+    defaultModel: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
+    envKey: 'TOGETHER_API_KEY',
+    supportsModelList: true,
+    requiresApiKey: true,
+    compatible: 'openai',
+    curatedModels: [
+      { id: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo', label: 'Llama 3.1 70B Turbo' },
+      { id: 'Qwen/Qwen2.5-72B-Instruct-Turbo', label: 'Qwen 2.5 72B' },
+    ],
+  },
+  deepseek: {
+    id: 'deepseek',
+    label: 'DeepSeek',
+    description: 'DeepSeek Chat API (OpenAI-compatible).',
+    defaultBaseUrl: 'https://api.deepseek.com/v1',
+    defaultModel: 'deepseek-chat',
+    envKey: 'DEEPSEEK_API_KEY',
+    supportsModelList: true,
+    requiresApiKey: true,
+    compatible: 'openai',
+    curatedModels: [
+      { id: 'deepseek-chat', label: 'DeepSeek Chat' },
+      { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
+    ],
+  },
+  mistral: {
+    id: 'mistral',
+    label: 'Mistral',
+    description: 'Mistral La Plateforme (OpenAI-compatible).',
+    defaultBaseUrl: 'https://api.mistral.ai/v1',
+    defaultModel: 'mistral-small-latest',
+    envKey: 'MISTRAL_API_KEY',
+    supportsModelList: true,
+    requiresApiKey: true,
+    compatible: 'openai',
+    curatedModels: [
+      { id: 'mistral-small-latest', label: 'Mistral Small' },
+      { id: 'mistral-large-latest', label: 'Mistral Large' },
+      { id: 'open-mistral-nemo', label: 'Mistral Nemo' },
+    ],
+  },
+  ollama: {
+    id: 'ollama',
+    label: 'Ollama (local)',
+    description: 'Local models via Ollama OpenAI-compatible endpoint.',
+    defaultBaseUrl: 'http://127.0.0.1:11434/v1',
+    defaultModel: 'llama3.2',
+    envKey: 'OLLAMA_API_KEY',
+    supportsModelList: true,
+    requiresApiKey: false,
+    compatible: 'openai',
+    curatedModels: [
+      { id: 'llama3.2', label: 'Llama 3.2' },
+      { id: 'llama3.1', label: 'Llama 3.1' },
+      { id: 'mistral', label: 'Mistral' },
+      { id: 'qwen2.5', label: 'Qwen 2.5' },
+    ],
+  },
+  lmstudio: {
+    id: 'lmstudio',
+    label: 'LM Studio (local)',
+    description: 'Local OpenAI-compatible server from LM Studio.',
+    defaultBaseUrl: 'http://127.0.0.1:1234/v1',
+    defaultModel: 'local-model',
+    envKey: 'LMSTUDIO_API_KEY',
+    supportsModelList: true,
+    requiresApiKey: false,
+    compatible: 'openai',
+    curatedModels: [{ id: 'local-model', label: 'Loaded model' }],
+  },
+  custom: {
+    id: 'custom',
+    label: 'Custom OpenAI-compatible',
+    description: 'Any server that implements /v1/chat/completions and optionally /v1/models.',
+    defaultBaseUrl: 'http://127.0.0.1:8080/v1',
+    defaultModel: 'default',
+    envKey: 'AI_API_KEY',
+    supportsModelList: true,
+    requiresApiKey: false,
+    compatible: 'openai',
+    curatedModels: [{ id: 'default', label: 'Default' }],
+  },
+};
+
+export const PROVIDER_LIST = Object.values(PROVIDERS);
+
+export function isProviderId(value: unknown): value is ProviderId {
+  return typeof value === 'string' && value in PROVIDERS;
+}
+
+export function normalizeBaseUrl(url: string): string {
+  return String(url || '').trim().replace(/\/+$/, '');
+}
+
+/** OpenRouter's `openrouter/free` router picks a different free model per request. */
+export function isOpenRouterFreeRouter(model?: string): boolean {
+  const id = String(model || '').trim().toLowerCase();
+  return id === 'openrouter/free' || id === 'openrouter/auto' || id.endsWith('/free:router');
+}
+
+export function isNonGenerativeModel(model?: string): boolean {
+  return /content-safety|moderation|embedding|whisper|tts\b|rerank|classifier|safety/i.test(model || '');
+}
+
+export function isDailyFreeQuotaError(text?: string): boolean {
+  return /free-models-per-day|free models per day/i.test(text || '');
+}

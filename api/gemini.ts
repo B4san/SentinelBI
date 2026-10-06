@@ -1,37 +1,38 @@
-import { Request, Response } from 'express';
-import { GoogleGenAI } from '@google/genai';
+import type { Request, Response } from 'express';
+import { geminiGenerate } from '../src/lib/ai/geminiAdapter';
+import { requestToMessages, resolveProviderConfig } from '../src/lib/ai/resolve';
+import { toUserFacingError } from '../src/lib/ai/errors';
 
 export default async function geminiHandler(req: Request, res: Response) {
   try {
-    // Busca la API key de los headers (localStorage frontend), del body, o de las variables de entorno
-    const apiKey = req.headers['x-api-key'] || req.body.apiKey || process.env.GEMINI_API_KEY || "AIzaSyDS-8HX_Wx3icQZqlxXeoOPYk9Ggu2ztJw";
-    
-    if (!apiKey) {
-      return res.status(500).json({ error: "Gemini API Key missing on server" });
-    }
+    const header = req.headers['x-api-key'];
+    const fromHeader = Array.isArray(header) ? header[0] : header;
+    const apiKey = String(fromHeader || req.body?.apiKey || '').trim();
+    const config = resolveProviderConfig(
+      {
+        provider: 'gemini',
+        model: req.body?.model,
+        apiKey,
+        contents: req.body?.contents,
+      },
+      process.env,
+    );
 
-    const ai = new GoogleGenAI({ apiKey: apiKey as string });
-    const { model, contents } = req.body;
-
-    let response;
-    try {
-      // Intentar primero con el modelo solicitado o el default
-      response = await ai.models.generateContent({
-        model: model || 'gemini-3-flash-preview',
-        contents,
-      });
-    } catch (firstErr: any) {
-      console.warn(`Error with primary model ${model || 'gemini-3-flash-preview'}, falling back to gemini-2.5-flash:`, firstErr.message || firstErr);
-      // Fallback a gemini-2.5-flash
-      response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents,
+    if (!config.apiKey) {
+      return res.status(401).json({
+        error: 'Gemini API key missing. Add it in Settings or set GEMINI_API_KEY.',
       });
     }
 
-    res.json({ text: response.text });
-  } catch (error: any) {
-    console.error("Gemini API Error in /api/gemini fallback:", error);
-    res.status(500).json({ error: error.message || "Failed to generate content" });
+    const messages = requestToMessages({ contents: req.body?.contents, messages: req.body?.messages });
+    if (messages.length === 0) {
+      return res.status(400).json({ error: 'Missing contents' });
+    }
+
+    const text = await geminiGenerate(config, messages);
+    return res.json({ text, provider: 'gemini', model: config.model });
+  } catch (error) {
+    const mapped = toUserFacingError(error, 'gemini');
+    return res.status(mapped.status || 500).json({ error: mapped.message });
   }
-};
+}

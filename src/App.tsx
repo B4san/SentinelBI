@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useStore } from './store';
+import { ThemeProvider } from './components/theme/ThemeProvider';
 import { AppLayout } from './components/layout/AppLayout';
 import { Login } from './pages/Login';
 import { SpacesLanding } from './pages/SpacesLanding';
@@ -14,6 +15,8 @@ import { VisualModel } from './pages/VisualModel';
 import { CodeCanvas } from './pages/CodeCanvas';
 import { Observability } from './pages/Observability';
 import { Settings } from './pages/Settings';
+import { DashboardPreview } from './pages/DashboardPreview';
+import { ShellPreview } from './pages/ShellPreview';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const user = useStore(state => state.user);
@@ -25,9 +28,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
+    <ThemeProvider>
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/__dash-preview" element={<DashboardPreview />} />
+        <Route path="/__shell-preview" element={<ShellPreview />} />
         
         <Route path="/" element={
           <ProtectedRoute>
@@ -58,5 +64,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
+    </ThemeProvider>
   );
 }

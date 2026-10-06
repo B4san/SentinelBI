@@ -6,12 +6,15 @@ import { useStore } from '../store';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../components/ui/card';
+import { AuroraBackdrop } from '../components/shell/AuroraBackdrop';
+import { CinematicText } from '../components/shell/CinematicText';
 
 export function Login() {
   const login = useStore(state => state.login);
   const navigate = useNavigate();
   const [email, setEmail] = useState('admin@sentinel.ai');
   const [password, setPassword] = useState('password');
+  const [notice, setNotice] = useState('');
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,10 +28,8 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-[#f5f7f9]">
-      {/* Decorative Background */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-200/40 rounded-full blur-[120px] pointer-events-none mix-blend-multiply" />
-      <div className="absolute top-1/4 right-1/4 w-[500px] h-[500px] bg-indigo-200/40 rounded-full blur-[100px] pointer-events-none mix-blend-multiply" />
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-[var(--background)]">
+      <AuroraBackdrop />
       
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -41,7 +42,7 @@ export function Login() {
              <div className="absolute inset-0 rounded-[1.25rem] bg-gradient-to-br from-blue-50 to-white opacity-50"></div>
              <Hexagon className="w-8 h-8 text-blue-600 fill-blue-600/10" />
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Sentinel<span className="text-blue-600">BI</span></h1>
+          <CinematicText className="text-3xl font-extrabold tracking-tight text-[var(--foreground)]">Sentinel<span className="text-blue-600">BI</span></CinematicText>
           <p className="text-gray-500 mt-2 font-medium">Enterprise AI Analytics & Governance</p>
         </div>
 
@@ -80,13 +81,15 @@ export function Login() {
                     <Shield className="w-3.5 h-3.5 mr-1.5 text-emerald-500" />
                     SSO Enabled
                  </div>
-                 <a href="#" className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors">Forgot password?</a>
+                 <button type="button" onClick={() => setNotice('This demo signs in locally. Any email and password work.')} className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors">Forgot password?</button>
               </div>
             </CardContent>
             <CardFooter className="flex flex-col space-y-4 px-8 pb-8 pt-6">
+              {notice && <p className="text-sm text-[var(--muted-foreground)] text-center">{notice}</p>}
               <Button type="submit" className="w-full h-14 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-[15px] shadow-md shadow-blue-600/20 transition-all">
                 Sign In to Workspace
               </Button>
+              <p className="text-xs text-center text-[var(--muted-foreground)]">Local demo auth — credentials are not verified on a server.</p>
             </CardFooter>
           </form>
         </Card>

@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Hexagon, Plus, Search, Folder, Clock, Star, UploadCloud, ArrowRight, Loader2, FileDown, Shield } from 'lucide-react';
+import { Hexagon, Search, Folder, Star, Loader2, FileDown, Shield, Sparkles } from 'lucide-react';
 import { useStore, Space } from '../store';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
-import { Badge } from '../components/ui/badge';
 import Papa from 'papaparse';
-import { GoogleGenAI } from '@google/genai';
+import { generateContent } from '../lib/ai/client';
+import { createSampleSpace } from '../lib/sampleData';
+import { AuroraBackdrop } from '../components/shell/AuroraBackdrop';
+import { CinematicText } from '../components/shell/CinematicText';
 
 export function SpacesLanding() {
   const { spaces, createSpace, user, toggleFavoriteSpace } = useStore();
@@ -20,6 +22,7 @@ export function SpacesLanding() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [aiInstruction, setAiInstruction] = useState('');
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const filteredSpaces = spaces.filter(s => s.title.toLowerCase().includes(searchTerm.toLowerCase()));
   const favoriteSpaces = filteredSpaces.filter(s => s.isFavorite);
@@ -42,19 +45,8 @@ export function SpacesLanding() {
              const dataSample = parsedData.slice(0, 10);
              const prompt = `You are Sentinel BI AI. Analyze this dataset and the user's instruction.\nUser instruction: "${aiInstruction}"\n\nDataset Columns: ${rawColumns.join(', ')}\nSample Data:\n${JSON.stringify(dataSample)}\n\nProvide a short executive summary (max 3 sentences) explaining the initial understanding of this data based on the instruction.`;
 
-             const response = await fetch('/api/gemini', {
-               method: 'POST',
-               headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('sentinel_api_key') || '' },
-               body: JSON.stringify({
-                 model: 'gemini-3-flash-preview',
-                 contents: prompt
-               })
-             });
-
-             if (response.ok) {
-               const data = await response.json();
-               aiSummary = data.text || aiSummary;
-             }
+             const data = await generateContent({ contents: prompt });
+             aiSummary = data.text || aiSummary;
            } catch (error) {
              console.error("AI Generation Error", error);
            }
@@ -139,6 +131,7 @@ export function SpacesLanding() {
            await processAndCreateSpace(file, dataArray, rawColumns);
          } catch (error) {
            console.error("JSON Parse Error:", error);
+           setUploadError('Could not parse that JSON file. Expect an array of objects.');
            setIsUploading(false);
            clearInterval(interval);
          }
@@ -158,6 +151,7 @@ export function SpacesLanding() {
          },
          error: (error) => {
            console.error("CSV Parse Error:", error);
+           setUploadError('Could not parse that CSV. Check the header row and try again.');
            setIsUploading(false);
            clearInterval(interval);
          }
@@ -166,9 +160,9 @@ export function SpacesLanding() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f7f9] text-gray-900 flex animate-in fade-in duration-500">
+    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex animate-in fade-in duration-500">
       {/* Sidebar - Quick Navigation */}
-      <div className="w-72 border-r border-gray-100 bg-white p-6 flex flex-col h-screen sticky top-0 overflow-y-auto shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10">
+      <div className="hidden md:flex w-72 border-r border-[var(--border)] bg-[var(--sidebar)] p-6 flex-col h-screen sticky top-0 overflow-y-auto z-10">
         <div className="flex items-center mb-8">
           <Hexagon className="w-8 h-8 text-blue-600 mr-2.5 fill-blue-600/10" />
           <span className="font-bold text-2xl tracking-tight text-gray-900">Sentinel<span className="text-blue-600">BI</span></span>
@@ -238,10 +232,8 @@ export function SpacesLanding() {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col items-center justify-center p-12 relative overflow-hidden bg-[#f5f7f9]">
-        {/* Subtle mesh gradients in background */}
-        <div className="absolute top-1/4 -right-20 w-[600px] h-[600px] bg-blue-200/40 rounded-full blur-[120px] pointer-events-none mix-blend-multiply" />
-        <div className="absolute -bottom-20 -left-20 w-[600px] h-[600px] bg-purple-200/40 rounded-full blur-[100px] pointer-events-none mix-blend-multiply" />
+      <div className="flex-1 flex flex-col items-center justify-center p-12 relative overflow-hidden bg-[var(--background)]">
+        <AuroraBackdrop />
 
         <motion.div 
           initial={{ opacity: 0, scale: 0.98, y: 10 }}
@@ -254,7 +246,7 @@ export function SpacesLanding() {
                 <div className="absolute inset-0 rounded-[1.5rem] mesh-gradient-cool opacity-10"></div>
                 <Hexagon className="w-10 h-10 text-blue-600 fill-blue-600/10" />
              </div>
-             <h1 className="text-4xl font-extrabold tracking-tight text-gray-900 mb-4">Create an Intelligence Space</h1>
+             <CinematicText className="text-4xl font-extrabold tracking-tight text-[var(--foreground)] mb-4">Create an Intelligence Space</CinematicText>
              <p className="text-gray-500 font-medium text-lg max-w-xl mx-auto leading-relaxed">Upload enterprise datasets to instantly spin up isolated topologies, governance tracking, and analytical models.</p>
           </div>
 
@@ -296,6 +288,26 @@ export function SpacesLanding() {
                </div>
 
                {/* Instruction Area */}
+               {uploadError && (
+                 <p className="text-sm text-rose-500 bg-rose-50 dark:bg-rose-500/10 p-3 rounded-xl">{uploadError}</p>
+               )}
+               <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" type="button" onClick={() => { const space = createSampleSpace('sales'); createSpace(space); navigate(`/space/${space.id}/visuals`); }} className="rounded-full">
+                    <Sparkles className="w-4 h-4 mr-2" /> Sample sales
+                  </Button>
+                  <Button variant="outline" type="button" onClick={() => { const space = createSampleSpace('web'); createSpace(space); navigate(`/space/${space.id}/visuals`); }} className="rounded-full">
+                    Sample web analytics
+                  </Button>
+                  <Button variant="outline" type="button" onClick={() => { const space = createSampleSpace('finance'); createSpace(space); navigate(`/space/${space.id}/visuals`); }} className="rounded-full">
+                    Sample finance
+                  </Button>
+                  <Button variant="outline" type="button" onClick={() => { const space = createSampleSpace('hr'); createSpace(space); navigate(`/space/${space.id}/visuals`); }} className="rounded-full">
+                    Sample HR
+                  </Button>
+                  <Button variant="outline" type="button" onClick={() => { const space = createSampleSpace('support'); createSpace(space); navigate(`/space/${space.id}/visuals`); }} className="rounded-full">
+                    Sample support
+                  </Button>
+               </div>
                <div className="space-y-4 pt-4">
                   <label className="text-[13px] font-bold text-gray-400 uppercase tracking-wider block ml-2">Initial AI Directive (Optional)</label>
                   <div className="flex gap-4">

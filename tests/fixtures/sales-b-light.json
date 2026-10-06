@@ -1,0 +1,367 @@
+{
+  "title": "Northstar Pricing & Margin Lab",
+  "subtitle": "Discount discipline, margin integrity, growth velocity",
+  "intent": "analyst board on pricing discipline",
+  "archetype": "editorial",
+  "generatedBy": "inclusionai/ling-3.0-flash-sante:free",
+  "narrative": {
+    "headline": "Northstar Pricing & Margin Lab",
+    "body": "Gross margin erosion tracks discount depth across products; region growth diverges with APAC accelerating"
+  },
+  "theme": {
+    "palette": {
+      "id": "forest",
+      "label": "Ocean",
+      "mode": "light",
+      "background": "transparent",
+      "surface": "#f5f5f0",
+      "text": "#1a2e1a",
+      "muted": "#6b7c6b",
+      "accent": "#2d6a4f",
+      "accentSoft": "#d8f3dc",
+      "border": "#c8dac8",
+      "chart": [
+        "#2d6a4f",
+        "#40916c",
+        "#74c69d",
+        "#b7e4c7",
+        "#1b4332",
+        "#52b788"
+      ]
+    },
+    "fontFamily": "font-sans",
+    "headingFont": "font-grotesk",
+    "radius": "rounded-2xl",
+    "density": "comfortable"
+  },
+  "widgets": [
+    {
+      "id": "insight-1",
+      "type": "insight",
+      "title": "North leads region at $11.0M, 25% of the total",
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "w": 5,
+        "h": 3
+      },
+      "polarity": "higher-is-better",
+      "role": "featured",
+      "color": "#2d6a4f",
+      "aggregation": "sum",
+      "insight": {
+        "title": "North leads region at $11.0M, 25% of the total",
+        "text": "Server will replace this with a computed fact. South is the smallest region at 13% share.",
+        "tone": "neutral"
+      }
+    },
+    {
+      "id": "hero-trend",
+      "type": "chart",
+      "title": "Revenue trend with prior-period compare",
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 6
+      },
+      "chartType": "area",
+      "datasetId": "ds-sales",
+      "xField": "order_date",
+      "yField": "revenue",
+      "componentId": "arc.brush-chart",
+      "measure": {
+        "kind": "simple",
+        "field": "revenue",
+        "agg": "sum",
+        "format": "currency"
+      },
+      "compare": "previous-period",
+      "polarity": "higher-is-better",
+      "role": "hero",
+      "color": "#40916c",
+      "aggregation": "sum"
+    },
+    {
+      "id": "kpi-gross-margin",
+      "type": "kpi",
+      "title": "Gross margin",
+      "layout": {
+        "x": 0,
+        "y": 6,
+        "w": 3,
+        "h": 3
+      },
+      "componentId": "arc.metric-card",
+      "measure": {
+        "kind": "weighted",
+        "numerator": {
+          "field": "gross_margin",
+          "agg": "avg"
+        },
+        "denominator": {
+          "field": "revenue",
+          "agg": "sum"
+        },
+        "format": "percent"
+      },
+      "polarity": "higher-is-better",
+      "color": "#74c69d",
+      "aggregation": "sum",
+      "kpi": {
+        "value": "27.7%",
+        "trend": "+1.6 pp vs first half",
+        "polarity": "higher-is-better",
+        "delta": 1.6384902363075493,
+        "sparkline": [
+          0.2728624403239812,
+          0.2726055705154588,
+          0.27405858783480247,
+          0.2590725083423979,
+          0.31050949187301796,
+          0.25259888396213664,
+          0.29282559899891014,
+          0.2897412219240245
+        ],
+        "format": "percent"
+      }
+    },
+    {
+      "id": "kpi-aov",
+      "type": "kpi",
+      "title": "AOV",
+      "layout": {
+        "x": 3,
+        "y": 6,
+        "w": 3,
+        "h": 3
+      },
+      "componentId": "arc.metric-card",
+      "measure": {
+        "kind": "ratio",
+        "numerator": {
+          "field": "revenue",
+          "agg": "sum"
+        },
+        "denominator": {
+          "field": "revenue",
+          "agg": "count"
+        },
+        "format": "currency"
+      },
+      "polarity": "higher-is-better",
+      "color": "#b7e4c7",
+      "aggregation": "sum",
+      "kpi": {
+        "value": "$68.5K",
+        "trend": "-19.1% vs first half",
+        "polarity": "higher-is-better",
+        "delta": -19.054992639466846,
+        "sparkline": [
+          65743.0125,
+          71343.4875,
+          85064.5875,
+          80739.675,
+          63036.1625,
+          65504.05,
+          54800.2875,
+          61834.45
+        ],
+        "format": "currency"
+      }
+    },
+    {
+      "id": "kpi-discount-rate",
+      "type": "kpi",
+      "title": "Discount rate",
+      "layout": {
+        "x": 6,
+        "y": 6,
+        "w": 3,
+        "h": 3
+      },
+      "yField": "discount_rate",
+      "componentId": "arc.metric-card",
+      "measure": {
+        "kind": "weighted",
+        "numerator": {
+          "field": "discount_rate",
+          "agg": "avg"
+        },
+        "denominator": {
+          "field": "revenue",
+          "agg": "sum"
+        },
+        "format": "percent"
+      },
+      "polarity": "lower-is-better",
+      "color": "#1b4332",
+      "aggregation": "avg",
+      "kpi": {
+        "value": "14.3%",
+        "trend": "+1.4 pp vs first half",
+        "polarity": "lower-is-better",
+        "delta": 1.4230208377738973,
+        "sparkline": [
+          0.13841735823255744,
+          0.13594433409216222,
+          0.1315251643346886,
+          0.1403242221064179,
+          0.1366170807114091,
+          0.15205866068586593,
+          0.16172420103635407,
+          0.15360037022242462
+        ],
+        "format": "percent",
+        "field": "discount_rate"
+      }
+    },
+    {
+      "id": "kpi-rev-per-unit",
+      "type": "kpi",
+      "title": "Revenue per unit",
+      "layout": {
+        "x": 9,
+        "y": 6,
+        "w": 3,
+        "h": 3
+      },
+      "componentId": "arc.metric-card",
+      "measure": {
+        "kind": "ratio",
+        "numerator": {
+          "field": "revenue",
+          "agg": "sum"
+        },
+        "denominator": {
+          "field": "units",
+          "agg": "sum"
+        },
+        "format": "currency"
+      },
+      "polarity": "higher-is-better",
+      "color": "#52b788",
+      "aggregation": "sum",
+      "kpi": {
+        "value": "$2.7K",
+        "trend": "-14.0% vs first half",
+        "polarity": "higher-is-better",
+        "delta": -14.042060952625318,
+        "sparkline": [
+          2500.9229671897288,
+          2710.1039886039885,
+          3268.57204610951,
+          3084.610315186246,
+          2453.9625304136252,
+          2552.5202143205065,
+          2400.8888280394303,
+          2521.282364933741
+        ],
+        "format": "currency"
+      }
+    },
+    {
+      "id": "scatter-discount-margin",
+      "type": "chart",
+      "title": "Discount depth vs gross margin",
+      "layout": {
+        "x": 0,
+        "y": 9,
+        "w": 6,
+        "h": 5
+      },
+      "chartType": "scatter",
+      "datasetId": "ds-sales",
+      "xField": "discount_rate",
+      "yField": "gross_margin",
+      "componentId": "arc.scatter-chart",
+      "measure": {
+        "kind": "weighted",
+        "numerator": {
+          "field": "gross_margin",
+          "agg": "avg"
+        },
+        "denominator": {
+          "field": "revenue",
+          "agg": "sum"
+        },
+        "format": "percent"
+      },
+      "polarity": "higher-is-better",
+      "color": "#2d6a4f",
+      "aggregation": "sum"
+    },
+    {
+      "id": "bar-region-revenue",
+      "type": "chart",
+      "title": "Revenue by region",
+      "layout": {
+        "x": 6,
+        "y": 9,
+        "w": 6,
+        "h": 5
+      },
+      "chartType": "bar",
+      "datasetId": "ds-sales",
+      "xField": "region",
+      "yField": "revenue",
+      "componentId": "arc.bar-chart",
+      "table": {
+        "sort": {
+          "field": "region",
+          "dir": "desc"
+        },
+        "groupBy": [
+          "region"
+        ]
+      },
+      "polarity": "higher-is-better",
+      "color": "#40916c",
+      "aggregation": "sum"
+    },
+    {
+      "id": "table-top-orders",
+      "type": "table",
+      "title": "Top orders by revenue",
+      "layout": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 6
+      },
+      "datasetId": "ds-sales",
+      "componentId": "arc.sortable-data-table",
+      "table": {
+        "sort": {
+          "field": "revenue",
+          "dir": "desc"
+        },
+        "limit": 8,
+        "groupBy": [
+          "region",
+          "channel"
+        ],
+        "measures": [
+          {
+            "field": "revenue",
+            "agg": "sum",
+            "format": "currency"
+          },
+          {
+            "field": "gross_margin",
+            "agg": "avg",
+            "format": "percent"
+          },
+          {
+            "field": "discount_rate",
+            "agg": "avg",
+            "format": "percent"
+          }
+        ]
+      },
+      "polarity": "higher-is-better",
+      "color": "#1b4332",
+      "aggregation": "sum"
+    }
+  ]
+}
