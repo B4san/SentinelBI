@@ -3,6 +3,7 @@ import { ArrowDownRight, ArrowUpRight, Filter, GripVertical, RefreshCw } from 'l
 import type { DashboardDataset, DashboardSpec, DashboardWidget } from '../../lib/dashboard/types';
 import { computeKpiStats, formatMetric } from '../../lib/dashboard/aggregate';
 import { metricFormat, prettyField } from '../../lib/dashboard/insights';
+import { deltaColor, inferMetricPolarity } from '../../lib/dashboard/metrics';
 import { ChartRenderer } from './ChartRenderer';
 
 export function WidgetCard({
@@ -91,10 +92,10 @@ export function WidgetCard({
   );
 }
 
-function Sparkline({ values, color }: { values: number[]; color: string }) {
+function Sparkline({ values, color, wide }: { values: number[]; color: string; wide?: boolean }) {
   if (values.length < 2) return null;
-  const w = 72;
-  const h = 28;
+  const w = wide ? 128 : 72;
+  const h = wide ? 40 : 28;
   const p = 2;
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -127,13 +128,24 @@ function WidgetBody({
   if (widget.type === 'kpi') {
     const stats = computeKpiStats(datasets, widget, spec.filters);
     const delta = stats.delta;
+    const polarity = widget.kpi?.polarity || widget.polarity || inferMetricPolarity(widget.kpi?.field || widget.yField || widget.title);
     const down = (delta ?? 0) < 0;
+    const hero = widget.role === 'hero' || widget.layout.h >= 4 || (widget.role === 'compare-a' || widget.role === 'compare-b') && widget.layout.h >= 3;
+    const compare = widget.role === 'compare-a' || widget.role === 'compare-b';
     return (
-      <div className="h-full flex flex-col justify-between px-4 py-3">
+      <div className={`h-full flex flex-col justify-between ${hero ? 'px-5 py-4' : 'px-4 py-3'}`}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               {editing && <GripVertical className="w-3 h-3 shrink-0 opacity-40 cursor-grab" data-drag-handle="true" />}
+              {compare && (
+                <span
+                  className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                  style={{ background: palette.accentSoft, color: palette.accent }}
+                >
+                  {widget.role === 'compare-a' ? 'A' : 'B'}
+                </span>
+              )}
               <p className="text-[11px] font-semibold uppercase tracking-[0.12em] truncate" style={{ color: palette.muted }}>
                 {widget.title}
               </p>
@@ -142,7 +154,7 @@ function WidgetBody({
           {delta != null && (
             <span
               className="inline-flex items-center gap-0.5 text-[11px] font-semibold shrink-0"
-              style={{ color: down ? '#e11d48' : '#059669' }}
+              style={{ color: deltaColor(delta, polarity) }}
             >
               {down ? <ArrowDownRight className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
               {`${delta >= 0 ? '+' : ''}${delta.toFixed(1)}%`}
@@ -150,9 +162,12 @@ function WidgetBody({
           )}
         </div>
         <div className="flex items-end justify-between gap-3 mt-1">
-          <div className="dash-kpi-value leading-none">{stats.value}</div>
-          <Sparkline values={stats.sparkline} color={widget.color || palette.accent} />
+          <div className={`${hero ? 'dash-kpi-value-hero' : 'dash-kpi-value'} leading-none`}>{stats.value}</div>
+          <Sparkline values={stats.sparkline} color={widget.color || palette.accent} wide={hero} />
         </div>
+        {hero && stats.trend && (
+          <p className="text-[11px] mt-2 truncate" style={{ color: palette.muted }}>{stats.trend}</p>
+        )}
       </div>
     );
   }
@@ -160,6 +175,7 @@ function WidgetBody({
   if (widget.type === 'insight') {
     const featured = widget.role === 'featured';
     const strip = widget.role === 'strip';
+    const compact = widget.layout.h <= 3;
     const tone = widget.insight?.tone || 'neutral';
     const bar = tone === 'warning' ? '#e11d48' : tone === 'positive' ? palette.accent : palette.muted;
     return (
@@ -170,7 +186,10 @@ function WidgetBody({
         <p className="text-[10px] font-bold uppercase tracking-[0.16em] shrink-0" style={{ color: palette.accent }}>
           {widget.insight?.title || widget.title || 'Finding'}
         </p>
-        <p className={`${featured ? 'text-[16px] leading-relaxed mt-3' : strip ? 'text-[13px] leading-snug' : 'text-[13px] leading-relaxed mt-2'}`} style={{ color: palette.text }}>
+        <p
+          className={`${featured ? (compact ? 'text-[15px] leading-snug mt-2' : 'text-[16px] leading-relaxed mt-3') : strip ? 'text-[13px] leading-snug' : 'text-[13px] leading-relaxed mt-2'}`}
+          style={{ color: palette.text }}
+        >
           {widget.insight?.text || widget.subtitle}
         </p>
       </div>
@@ -183,7 +202,7 @@ function WidgetBody({
         <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: palette.accent }}>
           {spec.archetype.replace(/-/g, ' ')}
         </p>
-        <h3 className={`${spec.theme.headingFont || spec.theme.fontFamily} text-2xl font-semibold tracking-tight mt-1`}>
+        <h3 className={`${spec.theme.headingFont || spec.theme.fontFamily} text-xl font-semibold tracking-tight mt-1 leading-snug`}>
           {widget.title}
         </h3>
         {widget.subtitle && (
@@ -229,13 +248,8 @@ function WidgetBody({
   }
 
   return (
-    <div className="h-full w-full min-h-0">
-      <ChartRenderer
-        spec={spec}
-        widget={widget}
-        datasets={datasets}
-        height={Math.max(180, widget.layout.h * 50 - 58)}
-      />
+    <div className="h-full w-full min-h-0 min-w-0">
+      <ChartRenderer spec={spec} widget={widget} datasets={datasets} />
     </div>
   );
 }

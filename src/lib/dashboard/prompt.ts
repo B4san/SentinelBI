@@ -61,17 +61,17 @@ export function buildDashboardPrompt(opts: {
     ? `Regenerate ONLY the widget with id "${opts.widgetId}". Return the full dashboard JSON with that widget replaced and everything else preserved.`
     : opts.existingJson
       ? `Modify the existing dashboard according to the user instruction. Return a complete replacement spec.`
-      : `Create a brand-new dashboard. Do not reuse a 4-KPI + 2-column template.`;
+      : `Create a brand-new dashboard. Do not reuse a 4-KPI + 2-column template. The opening row must match the archetype brief.`;
 
   const archetypeBrief: Record<LayoutArchetype, string> = {
-    'hero-kpi-rail': 'Executive: four compact KPIs (h=2,w=3), a full-width insight strip, one hero time-series (w=12,h=6), two supporting charts underneath.',
-    editorial: 'Storytelling: a section headline, a featured insight (w=4) beside a hero chart (w=8), three compact KPIs, then one ranking chart.',
-    'command-center': 'Analytical: compact KPI strip, dense multi-chart workspace, and a table. More charts than copy.',
-    'story-arc': 'Narrative walk: section, three KPIs, hero trend, insight strip, table.',
-    'split-insight': 'Findings rail (w=4) on the left, KPIs and charts stacked on the right.',
-    'metric-mosaic': 'KPI wall: eight compact metrics, one working chart, one insight.',
-    comparison: 'Two equal comparison charts (w=6 each) plus paired KPIs and a finding strip.',
-    'funnel-flow': 'Full-width trend then three equal diagnostic charts.',
+    'hero-kpi-rail': 'Executive OPENING: one oversized hero KPI (w=6–7, h=4) plus 2–3 supporting metrics of mixed sizes — NEVER a row of four equal KPI tiles. Then an insight strip, a full-width hero trend (h=6), two supporting charts.',
+    editorial: 'Editorial OPENING: section headline + a short featured insight (w=5, h=3–4) beside one hero chart (w=7, h=6). KPIs come AFTER the story, 2–3 larger cards. Never start with a KPI strip. Insight cards must not be tall empty columns.',
+    'command-center': 'Analytical OPENING: chart-first. Hero chart (w=8, h=7) with a KPI sidebar (w=4) of 2–3 stacked metrics. Then diagnostic charts and a table. Do not open with four KPIs.',
+    'story-arc': 'Narrative walk: section headline, hero trend first, insight strip, then 2–3 KPIs, then a table.',
+    'split-insight': 'Short featured finding (w=4, h=5) on the left, hero chart on the right, then KPIs and a second chart. Do not make the insight a tall empty column.',
+    'metric-mosaic': 'KPI wall OPENING: a dense mosaic of VARIED card sizes (6×3, 3×3, 4×2, 8×2, …) — never eight identical 3×2 tiles. Use only real business metrics; fewer larger cards if measures are scarce. Then one working chart + insight.',
+    comparison: 'Comparison OPENING: split A/B header — two large KPIs (w=6, h=3) with roles compare-a and compare-b — then two equal comparison charts (w=6, h=6). Not a four-KPI strip.',
+    'funnel-flow': 'Flow OPENING: full-width trend first (no KPI row), then three equal diagnostic charts, KPIs last.',
   };
 
   const prompt = `You are the Visual Systems designer for SentinelBI. Compose a unique, polished analytics dashboard as STRICT JSON (no markdown). The rendered board must look like Linear / Vercel / Stripe / Observable: full-width, compact, typographically disciplined.
@@ -87,12 +87,13 @@ ${opts.instruction ? `Additional instruction: ${opts.instruction}` : ''}
 DESIGN RULES:
 ${principles}
 8. Fill the entire 12-column grid. Every row should sum to w=12. No orphaned empty right half.
-9. KPI tiles are compact: layout.h MUST be 2. Include kpi.value, kpi.delta (percent change), and kpi.sparkline (6–10 numbers).
-10. Chart tiles are h=5–7. Time fields encode as line/area, sorted chronologically. Categories encode as bar/donut/horizontal-bar. NEVER use a date as a “leader” dimension.
-11. Insight copy must be grammatical and specific, e.g. “${prettyField('region') || 'APAC'} generated $75.4K in revenue, 19% of the total.” Forbidden: “2026-09-08 leads Date with 1 observations”.
-12. Adjacent charts must use different chartType values. Comparison boards must encode two different dimensions.
+9. KPI count and size MUST vary with the archetype. Hero KPIs may be h=3–4 / w=6–7. Supporting KPIs may be h=2. Include kpi.value, kpi.delta, kpi.sparkline (6–10 numbers), and kpi.polarity.
+10. Chart tiles are h=5–7 and MUST fill the card (no empty band under the plot). Time fields encode as line/area, sorted chronologically. Categories encode as bar/donut/horizontal-bar. NEVER use a date as a “leader” dimension.
+11. Insight copy must be grammatical and specific, e.g. “${prettyField('region') || 'APAC'} generated $75.4K in revenue, 19% of the total.” Forbidden: “2026-09-08 leads Date with 1 observations”. Featured insight cards are h=3–5 (content-fit), never h=7+ empty columns.
+12. Adjacent charts must use different chartType values. Comparison boards must encode two different dimensions and open with a split A/B header.
 13. theme.palette.background must be "transparent". Cards use a surface that matches ${mode} mode.
-14. Keep titles short. No filler like “Healthy coverage”.
+14. Keep titles short. NEVER emit filler / meta KPIs: rows loaded, number of channels, number of devices, unique counts of dimensions, “Active cohorts”. If there are only 2–3 real measures, draw 2–3 larger cards.
+15. polarity is required on every KPI: "higher-is-better" (revenue, conversions, sessions) or "lower-is-better" (bounce rate, churn, cost, CAC, latency, errors, refunds, attrition). The UI colors an increase red and a decrease green when polarity is lower-is-better.
 
 VARIETY RULES:
 - Mix widths (3,4,6,8,12). Do not clone a generic SaaS 4-up + 2-chart template unless the archetype is executive.
@@ -136,8 +137,9 @@ Return JSON with this exact shape:
       "xField": "exact column",
       "yField": "exact column",
       "aggregation": "sum",
+      "polarity": "higher-is-better",
       "color": "#2563eb",
-      "kpi": { "value": "1,240", "trend": "+4.2% vs first half", "field": "exact column", "aggregation": "sum", "format": "number", "delta": 4.2, "sparkline": [1, 2, 3, 4] },
+      "kpi": { "value": "1,240", "trend": "+4.2% vs first half", "field": "exact column", "aggregation": "sum", "format": "number", "delta": 4.2, "sparkline": [1, 2, 3, 4], "polarity": "higher-is-better" },
       "insight": { "title": "finding title", "text": "grammatical finding", "tone": "positive" }
     }
   ]

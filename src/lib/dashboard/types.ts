@@ -58,6 +58,9 @@ export type FilterOp = (typeof FILTER_OPS)[number];
 export const AGGREGATIONS = ['sum', 'avg', 'count', 'min', 'max'] as const;
 export type Aggregation = (typeof AGGREGATIONS)[number];
 
+export const METRIC_POLARITIES = ['higher-is-better', 'lower-is-better'] as const;
+export type MetricPolarity = (typeof METRIC_POLARITIES)[number];
+
 export interface GridPosition {
   x: number;
   y: number;
@@ -103,6 +106,7 @@ export interface DashboardWidget {
   aggregation?: Aggregation;
   filter?: WidgetFilter;
   role?: 'hero' | 'support' | 'compare-a' | 'compare-b' | 'strip' | 'featured';
+  polarity?: MetricPolarity;
   kpi?: {
     value: string;
     trend?: string;
@@ -111,6 +115,7 @@ export interface DashboardWidget {
     format?: 'number' | 'currency' | 'percent';
     delta?: number;
     sparkline?: number[];
+    polarity?: MetricPolarity;
   };
   insight?: {
     title?: string;

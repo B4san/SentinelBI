@@ -1,7 +1,8 @@
-import { ARCHETYPE_SLOTS } from './archetypes';
+import { slotsForArchetype } from './archetypes';
 import { PALETTES, pickPaletteForMode, palettesForMode } from './palettes';
 import { createRng, makeSeed, pick, shuffle } from './seed';
 import { aggregateNumber, formatMetric } from './format';
+import { inferMetricPolarity, isFillerKpi, type MetricPolarity } from './metrics';
 import {
   analyzeDataset,
   classifyFields,
@@ -32,6 +33,19 @@ export interface GenerateDashboardContext {
   mode?: 'light' | 'dark';
 }
 
+interface DerivedKpi {
+  title: string;
+  field?: string;
+  aggregation: Aggregation;
+  format: 'number' | 'currency' | 'percent';
+  value: number;
+  delta?: number;
+  sparkline?: number[];
+  filter?: DashboardWidget['filter'];
+  hint?: string;
+  polarity: MetricPolarity;
+}
+
 function chooseChartType(
   rng: () => number,
   prefer: ChartType[] | undefined,
@@ -55,15 +69,112 @@ function chooseChartType(
   return pick(rng, unused.length ? unused : pool);
 }
 
-function kpiTitle(field: string | undefined, aggregation: Aggregation, kind?: string): string {
-  if (kind === 'rows') return 'Rows loaded';
-  if (kind === 'cohorts') return 'Active cohorts';
-  if (!field) return 'Records';
+function kpiTitle(field: string | undefined, aggregation: Aggregation): string {
+  if (!field) return 'Metric';
   const name = prettyField(field);
   if (aggregation === 'avg') return `Avg ${name.toLowerCase()}`;
   if (aggregation === 'max') return `Peak ${name.toLowerCase()}`;
-  if (aggregation === 'count') return `${name} count`;
+  if (aggregation === 'min') return `Floor ${name.toLowerCase()}`;
   return `Total ${name.toLowerCase()}`;
+}
+
+function measureKpi(
+  rows: Record<string, unknown>[],
+  field: string,
+  aggregation: Aggregation,
+  timeField?: string,
+  extra?: Partial<DerivedKpi>,
+): DerivedKpi {
+  const values = rows.map((row) => Number(row[field])).filter((n) => !Number.isNaN(n));
+  const change = timeField ? periodChange(rows, timeField, field) : null;
+  return {
+    title: extra?.title || kpiTitle(field, aggregation),
+    field,
+    aggregation,
+    format: metricFormat(field),
+    value: extra?.value ?? aggregateNumber(values, aggregation),
+    delta: extra?.delta ?? change?.deltaPct,
+    sparkline: extra?.sparkline ?? sparklineValues(rows, field, timeField),
+    filter: extra?.filter,
+    hint: extra?.hint,
+    polarity: extra?.polarity || inferMetricPolarity(field),
+  };
+}
+
+export function buildBusinessKpis(dataset: DashboardDataset): DerivedKpi[] {
+  const rows = dataset.data || [];
+  const fields = classifyFields(dataset);
+  const nums = fields.measures;
+  const cats = fields.dimensions;
+  const times = fields.time;
+  const kpis: DerivedKpi[] = [];
+  const seen = new Set<string>();
+
+  const push = (kpi: DerivedKpi) => {
+    const key = `${kpi.title}|${kpi.field}|${kpi.aggregation}|${kpi.filter?.value || ''}`;
+    if (seen.has(key)) return;
+    if (isFillerKpi({ title: kpi.title, yField: kpi.field, aggregation: kpi.aggregation, kpi: { value: '', field: kpi.field, aggregation: kpi.aggregation } })) {
+      return;
+    }
+    seen.add(key);
+    kpis.push(kpi);
+  };
+
+  for (const field of nums) {
+    const aggregation: Aggregation = metricFormat(field) === 'percent' ? 'avg' : 'sum';
+    push(measureKpi(rows, field, aggregation, times[0]));
+  }
+
+  if (nums[0] && cats[0]) {
+    const ranked = rankedGroups(rows, cats[0], nums[0]);
+    if (ranked[0]) {
+      const subset = rows.filter((row) => String(row[cats[0]]) === ranked[0].key);
+      push(measureKpi(rows, nums[0], 'sum', times[0], {
+        title: `${ranked[0].key} · top ${prettyField(cats[0]).toLowerCase()}`,
+        value: ranked[0].value,
+        filter: { field: cats[0], op: 'equals', value: ranked[0].key },
+        sparkline: sparklineValues(subset, nums[0], times[0]),
+        hint: ranked[0].key,
+      }));
+    }
+  }
+
+  if (nums[0] && cats[1]) {
+    const ranked = rankedGroups(rows, cats[1], nums[0]);
+    if (ranked[0]) {
+      const subset = rows.filter((row) => String(row[cats[1]]) === ranked[0].key);
+      push(measureKpi(rows, nums[0], 'sum', times[0], {
+        title: `${ranked[0].key} · top ${prettyField(cats[1]).toLowerCase()}`,
+        value: ranked[0].value,
+        filter: { field: cats[1], op: 'equals', value: ranked[0].key },
+        sparkline: sparklineValues(subset, nums[0], times[0]),
+        hint: ranked[0].key,
+      }));
+    }
+  }
+
+  if (nums[0] && metricFormat(nums[0]) !== 'percent') {
+    push(measureKpi(rows, nums[0], 'avg', times[0]));
+  }
+  if (nums[1] && metricFormat(nums[1]) !== 'percent') {
+    push(measureKpi(rows, nums[1], 'max', times[0]));
+  }
+  if (nums[2] && metricFormat(nums[2]) !== 'percent') {
+    push(measureKpi(rows, nums[2], 'avg', times[0]));
+  }
+
+  return kpis;
+}
+
+function pickKpi(pool: DerivedKpi[], slotRole: string | undefined, used: Set<number>): DerivedKpi | undefined {
+  if (!pool.length) return undefined;
+  const unused = pool.map((kpi, i) => ({ kpi, i })).filter((item) => !used.has(item.i));
+  const preferIndex = slotRole === 'compare-b' || slotRole === 'support'
+    ? unused.find((item) => item.i > 0)?.i
+    : unused[0]?.i;
+  const index = preferIndex ?? unused[0]?.i ?? 0;
+  used.add(index);
+  return pool[index];
 }
 
 export function buildFallbackDashboard(ctx: GenerateDashboardContext): DashboardSpec {
@@ -71,7 +182,6 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
   const rng = createRng(seed);
   const datasets = ctx.datasets.length > 0 ? ctx.datasets : [{ id: 'empty', name: 'Empty', data: [], columns: [] }];
   const primary = datasets[0];
-  const rows = primary.data || [];
   const fields = classifyFields(primary);
   const findings = analyzeDataset(primary);
   const story = narrativeFromFindings(findings, ctx.intent);
@@ -83,153 +193,47 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
   const palette = ctx.paletteId
     ? pickPaletteForMode(ctx.paletteId, mode)
     : pick(rng, palettesForMode(mode).length ? palettesForMode(mode) : PALETTES);
-  const slots = ARCHETYPE_SLOTS[archetype];
+  const derivedKpis = buildBusinessKpis(primary);
+  const slots = slotsForArchetype(archetype, derivedKpis.length);
   const usedTypes = new Set<string>();
   const widgets: DashboardWidget[] = [];
   const usedEncodings = new Set<string>();
+  const usedKpis = new Set<number>();
 
-  let kpiCursor = 0;
   let chartCursor = 0;
   let insightCursor = 0;
 
-  const derivedKpis: Array<{
-    title: string;
-    field?: string;
-    aggregation: Aggregation;
-    format: 'number' | 'currency' | 'percent';
-    value: number;
-    delta?: number;
-    sparkline?: number[];
-    filter?: DashboardWidget['filter'];
-    hint?: string;
-  }> = [];
-
-  if (nums[0]) {
-    const values = rows.map((row) => Number(row[nums[0]])).filter((n) => !Number.isNaN(n));
-    const change = times[0] ? periodChange(rows, times[0], nums[0]) : null;
-    derivedKpis.push({
-      title: kpiTitle(nums[0], 'sum'),
-      field: nums[0],
-      aggregation: 'sum',
-      format: metricFormat(nums[0]),
-      value: aggregateNumber(values, 'sum'),
-      delta: change?.deltaPct,
-      sparkline: sparklineValues(rows, nums[0], times[0]),
-    });
-  }
-  if (nums[1]) {
-    const values = rows.map((row) => Number(row[nums[1]])).filter((n) => !Number.isNaN(n));
-    const change = times[0] ? periodChange(rows, times[0], nums[1]) : null;
-    derivedKpis.push({
-      title: kpiTitle(nums[1], metricFormat(nums[1]) === 'percent' ? 'avg' : 'sum'),
-      field: nums[1],
-      aggregation: metricFormat(nums[1]) === 'percent' ? 'avg' : 'sum',
-      format: metricFormat(nums[1]),
-      value: aggregateNumber(values, metricFormat(nums[1]) === 'percent' ? 'avg' : 'sum'),
-      delta: change?.deltaPct,
-      sparkline: sparklineValues(rows, nums[1], times[0]),
-    });
-  }
-  if (nums[0] && cats[0]) {
-    const ranked = rankedGroups(rows, cats[0], nums[0]);
-    if (ranked[0]) {
-      derivedKpis.push({
-        title: `${ranked[0].key} · top ${prettyField(cats[0]).toLowerCase()}`,
-        field: nums[0],
-        aggregation: 'sum',
-        format: metricFormat(nums[0]),
-        value: ranked[0].value,
-        filter: { field: cats[0], op: 'equals' as const, value: ranked[0].key },
-        sparkline: sparklineValues(rows.filter((row) => String(row[cats[0]]) === ranked[0].key), nums[0], times[0]),
-        hint: ranked[0].key,
-      });
-    }
-  }
-  if (nums[2]) {
-    const values = rows.map((row) => Number(row[nums[2]])).filter((n) => !Number.isNaN(n));
-    derivedKpis.push({
-      title: kpiTitle(nums[2], metricFormat(nums[2]) === 'percent' ? 'avg' : 'sum'),
-      field: nums[2],
-      aggregation: metricFormat(nums[2]) === 'percent' ? 'avg' : 'sum',
-      format: metricFormat(nums[2]),
-      value: aggregateNumber(values, metricFormat(nums[2]) === 'percent' ? 'avg' : 'sum'),
-      sparkline: sparklineValues(rows, nums[2], times[0]),
-    });
-  }
-  derivedKpis.push({
-    title: 'Rows loaded',
-    aggregation: 'count',
-    format: 'number',
-    value: rows.length,
-  });
-  if (cats[0]) {
-    derivedKpis.push({
-      title: `${prettyField(cats[0])}s`,
-      aggregation: 'count',
-      format: 'number',
-      value: new Set(rows.map((row) => String(row[cats[0]]))).size,
-    });
-  }
-  if (cats[1]) {
-    derivedKpis.push({
-      title: `${prettyField(cats[1])}s`,
-      aggregation: 'count',
-      format: 'number',
-      value: new Set(rows.map((row) => String(row[cats[1]]))).size,
-    });
-  }
-  if (nums[0]) {
-    const values = rows.map((row) => Number(row[nums[0]])).filter((n) => !Number.isNaN(n));
-    derivedKpis.push({
-      title: kpiTitle(nums[0], 'avg'),
-      field: nums[0],
-      aggregation: 'avg',
-      format: metricFormat(nums[0]),
-      value: aggregateNumber(values, 'avg'),
-      sparkline: sparklineValues(rows, nums[0], times[0]),
-    });
-  }
-  if (nums[3]) {
-    const values = rows.map((row) => Number(row[nums[3]])).filter((n) => !Number.isNaN(n));
-    derivedKpis.push({
-      title: kpiTitle(nums[3], 'avg'),
-      field: nums[3],
-      aggregation: 'avg',
-      format: metricFormat(nums[3]),
-      value: aggregateNumber(values, 'avg'),
-      sparkline: sparklineValues(rows, nums[3], times[0]),
-    });
-  }
-
   slots.forEach((slot, index) => {
     if (slot.type === 'kpi') {
-      const kpi = derivedKpis[kpiCursor] || derivedKpis[derivedKpis.length - 1] || derivedKpis[0];
-      const trend = kpi?.delta != null
+      const kpi = pickKpi(derivedKpis, slot.role, usedKpis);
+      if (!kpi) return;
+      const trend = kpi.delta != null
         ? `${kpi.delta >= 0 ? '+' : ''}${kpi.delta.toFixed(1)}% vs first half`
         : undefined;
       widgets.push({
         id: `kpi-${index}`,
         type: 'kpi',
-        title: kpi?.title || 'Metric',
-        subtitle: kpi?.hint,
+        title: kpi.title,
+        subtitle: kpi.hint,
         layout: slot.layout,
         role: slot.role,
         datasetId: primary.id,
-        yField: kpi?.field,
-        aggregation: kpi?.aggregation || 'sum',
-        filter: kpi?.filter,
+        yField: kpi.field,
+        aggregation: kpi.aggregation,
+        filter: kpi.filter,
         color: palette.chart[index % palette.chart.length],
+        polarity: kpi.polarity,
         kpi: {
-          value: formatMetric(kpi?.value || 0, kpi?.format),
+          value: formatMetric(kpi.value, kpi.format),
           trend,
-          field: kpi?.field,
-          aggregation: kpi?.aggregation,
-          format: kpi?.format,
-          delta: kpi?.delta,
-          sparkline: kpi?.sparkline,
+          field: kpi.field,
+          aggregation: kpi.aggregation,
+          format: kpi.format,
+          delta: kpi.delta,
+          sparkline: kpi.sparkline,
+          polarity: kpi.polarity,
         },
       });
-      kpiCursor += 1;
       return;
     }
 
@@ -257,7 +261,6 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
         id: `section-${index}`,
         type: 'section',
         title: story.headline,
-        subtitle: story.body,
         layout: slot.layout,
       });
       return;
@@ -345,7 +348,7 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
       body: story.body,
     },
     sections: [{ id: 'main', title: 'Primary view' }],
-    widgets,
+    widgets: widgets.filter((w) => w.type !== 'kpi' || !isFillerKpi(w)),
   };
 }
 
@@ -388,16 +391,19 @@ export function varyWidget(widget: DashboardWidget, datasets: DashboardDataset[]
   if (widget.type === 'kpi' && nums.length) {
     const field = pick(rng, nums);
     const values = dataset.data.map((row) => Number(row[field])).filter((n) => !Number.isNaN(n));
+    const polarity = inferMetricPolarity(field);
     return {
       ...widget,
       yField: field,
       title: prettyField(field),
+      polarity,
       kpi: {
         ...widget.kpi,
         field,
         format: metricFormat(field),
         value: formatMetric(aggregateNumber(values, 'sum'), metricFormat(field)),
         sparkline: sparklineValues(dataset.data, field, times[0]),
+        polarity,
       },
     };
   }

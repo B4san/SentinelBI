@@ -40,28 +40,51 @@ function widthFromGrid(el: HTMLElement, cols: number): number {
   return Math.round(el.getBoundingClientRect().width);
 }
 
-function usePlotWidth(cols: number): [React.RefObject<HTMLDivElement | null>, number] {
+function heightFromCell(el: HTMLElement): number {
+  let node: HTMLElement | null = el;
+  while (node) {
+    const raw = getComputedStyle(node).getPropertyValue('--dash-cell-h');
+    if (raw) {
+      const cell = Number.parseFloat(raw);
+      if (cell > 0) {
+        const header = el.parentElement?.previousElementSibling instanceof HTMLElement
+          ? el.parentElement.previousElementSibling.getBoundingClientRect().height
+          : 44;
+        return Math.max(120, Math.round(cell - header - 20));
+      }
+    }
+    node = node.parentElement;
+  }
+  return 0;
+}
+
+function usePlotBox(cols: number): [React.RefObject<HTMLDivElement | null>, { width: number; height: number }] {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [width, setWidth] = useState(0);
+  const [box, setBox] = useState({ width: 0, height: 0 });
 
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     const update = () => {
-      const measured = Math.round(el.getBoundingClientRect().width);
-      const estimated = widthFromGrid(el, cols);
-      const next = Math.max(measured, estimated);
-      if (next > 0) setWidth(next);
+      const measuredW = Math.round(el.getBoundingClientRect().width);
+      const measuredH = Math.round(el.getBoundingClientRect().height);
+      const parentH = Math.round(el.parentElement?.getBoundingClientRect().height || 0);
+      const width = Math.max(measuredW, widthFromGrid(el, cols));
+      const height = Math.max(measuredH, parentH, heightFromCell(el));
+      if (width > 0 || height > 0) {
+        setBox((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
+      }
     };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
+    if (el.parentElement) ro.observe(el.parentElement);
     const grid = el.closest('.dash-grid');
     if (grid) ro.observe(grid);
     return () => ro.disconnect();
   }, [cols]);
 
-  return [ref, width];
+  return [ref, box];
 }
 
 function formatTick(value: unknown, field?: string): string {
@@ -86,8 +109,9 @@ export function ChartRenderer({
   datasets: DashboardDataset[];
   height?: number;
 }) {
-  const plotHeight = Math.max(180, height || 220);
-  const [boxRef, plotWidth] = usePlotWidth(widget.layout?.w || 6);
+  const [boxRef, box] = usePlotBox(widget.layout?.w || 6);
+  const plotWidth = box.width;
+  const plotHeight = Math.max(140, height || box.height || widget.layout.h * 56);
   const palette = spec.theme.palette;
   const data = prepareChartSeries(datasets, widget, spec.filters);
   const type = widget.chartType || 'bar';
@@ -234,7 +258,7 @@ export function ChartRenderer({
   }
 
   return (
-    <div ref={boxRef} className="w-full min-w-0" style={{ height: plotHeight, width: '100%' }}>
+    <div ref={boxRef} className="w-full h-full min-w-0 min-h-0" style={{ width: '100%', height: '100%' }}>
       {chart}
     </div>
   );

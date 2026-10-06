@@ -1,4 +1,5 @@
 import { getPalette, FONT_FAMILIES, RADIUS_TOKENS, pickPaletteForMode } from './palettes';
+import { sanitizePolarity } from './metrics';
 import {
   AGGREGATIONS,
   CHART_TYPES,
@@ -104,18 +105,23 @@ export function sanitizeWidget(raw: unknown, index: number, palette: Palette): D
   const chartTypeRaw = asString(rec.chartType || rec.type);
   const chartType = CHART_SET.has(chartTypeRaw) ? (chartTypeRaw as ChartType) : type === 'chart' ? 'bar' : undefined;
   const aggregation = AGG_SET.has(asString(rec.aggregation)) ? (asString(rec.aggregation) as Aggregation) : 'sum';
+  const title = asString(rec.title || rec.label, type === 'kpi' ? `Metric ${index + 1}` : `Widget ${index + 1}`);
+  const yField = asString(rec.yField || rec.yAxisField) || undefined;
+  const kpiRec = rec.kpi && typeof rec.kpi === 'object' ? (rec.kpi as Record<string, unknown>) : undefined;
+  const polarity = sanitizePolarity(rec.polarity || kpiRec?.polarity, asString(kpiRec?.field) || yField, title);
 
   return {
     id: asString(rec.id, `w-${index + 1}`),
     type,
-    title: asString(rec.title || rec.label, type === 'kpi' ? `Metric ${index + 1}` : `Widget ${index + 1}`),
+    title,
     subtitle: asString(rec.subtitle) || undefined,
     sectionId: asString(rec.sectionId) || undefined,
     layout: sanitizeGrid(rec.layout, defaultLayoutFor(type, index)),
     chartType,
     datasetId: asString(rec.datasetId) || undefined,
     xField: asString(rec.xField || rec.xAxisField) || undefined,
-    yField: asString(rec.yField || rec.yAxisField) || undefined,
+    yField,
+    polarity,
     groupField: asString(rec.groupField) || undefined,
     sizeField: asString(rec.sizeField) || undefined,
     role: (['hero', 'support', 'compare-a', 'compare-b', 'strip', 'featured'] as const).includes(
@@ -152,9 +158,10 @@ export function sanitizeWidget(raw: unknown, index: number, palette: Palette): D
                 .map((n) => Number(n))
                 .filter((n) => Number.isFinite(n))
             : undefined,
+          polarity,
         }
       : type === 'kpi'
-        ? { value: asString(rec.value, '—'), trend: asString(rec.trend) || undefined }
+        ? { value: asString(rec.value, '—'), trend: asString(rec.trend) || undefined, polarity }
         : undefined,
     insight: rec.insight && typeof rec.insight === 'object'
       ? {
