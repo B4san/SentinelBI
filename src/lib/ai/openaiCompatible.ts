@@ -1,6 +1,16 @@
 import { mapProviderError } from './errors';
 import type { ModelInfo, ResolvedProviderConfig } from './types';
 
+export const GENERATE_TIMEOUT_MS = 240_000;
+
+export class GenerationTimeoutError extends Error {
+  status = 504;
+  constructor(message = 'Dashboard generation timed out after 240s.') {
+    super(message);
+    this.name = 'GenerationTimeoutError';
+  }
+}
+
 export function chatCompletionsUrl(baseUrl: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
 }
@@ -47,6 +57,24 @@ export function authHeaders(config: ResolvedProviderConfig): Record<string, stri
   return headers;
 }
 
+export function chatPayloadError(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const rec = payload as Record<string, unknown>;
+  const choices = rec.choices;
+  const empty = !Array.isArray(choices) || choices.length === 0;
+  const err = rec.error;
+  if (!err || !empty) return undefined;
+  if (typeof err === 'string') return err;
+  if (typeof err === 'object' && err && 'message' in err) {
+    return String((err as { message: unknown }).message || 'Upstream error');
+  }
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return 'Upstream error';
+  }
+}
+
 export function extractChatText(payload: unknown): string {
   if (!payload || typeof payload !== 'object') return '';
   const rec = payload as Record<string, unknown>;
@@ -63,63 +91,114 @@ export function extractChatText(payload: unknown): string {
   return '';
 }
 
-export async function openaiGenerate(
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export type ResponseFormatStep = 'json_schema' | 'json_object' | 'plain';
+
+export interface OpenaiGenerateOpts {
+  json?: boolean;
+  temperature?: number;
+  maxTokens?: number;
+  jsonSchema?: Record<string, unknown>;
+  timeoutMs?: number;
+  retries?: number;
+  format?: ResponseFormatStep;
+  fetchImpl?: typeof fetch;
+}
+
+async function postChat(
   config: ResolvedProviderConfig,
   messages: { role: string; content: string }[],
-  opts: { json?: boolean; temperature?: number; maxTokens?: number; jsonSchema?: Record<string, unknown> } = {},
-): Promise<string> {
-  let res: Response;
+  opts: OpenaiGenerateOpts,
+  format: ResponseFormatStep,
+): Promise<{ status: number; raw: string; payload: unknown }> {
+  const controller = new AbortController();
+  const timeoutMs = opts.timeoutMs ?? GENERATE_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const fetchImpl = opts.fetchImpl || fetch;
+  const jsonSchema = format === 'json_schema' ? opts.jsonSchema : undefined;
+  const json = format !== 'plain';
+  const bodyMessages = format === 'plain'
+    ? [...messages, { role: 'system', content: 'Return only JSON. No markdown, no prose.' }]
+    : messages;
   try {
-    res = await fetch(chatCompletionsUrl(config.baseUrl), {
+    const res = await fetchImpl(chatCompletionsUrl(config.baseUrl), {
       method: 'POST',
       headers: authHeaders(config),
       body: JSON.stringify(
         buildChatBody({
           model: config.model,
-          messages,
+          messages: bodyMessages,
           stream: false,
-          json: opts.json,
+          json,
           temperature: opts.temperature,
           maxTokens: opts.maxTokens,
-          jsonSchema: opts.jsonSchema,
+          jsonSchema,
         }),
       ),
+      signal: controller.signal,
     });
-  } catch (cause) {
-    throw mapProviderError({ cause, provider: config.provider, status: 0 });
-  }
-
-  let raw = await res.text();
-  if (!res.ok && opts.jsonSchema && (res.status === 400 || res.status === 422)) {
+    const raw = await res.text();
+    let payload: unknown = raw;
     try {
-      res = await fetch(chatCompletionsUrl(config.baseUrl), {
-        method: 'POST',
-        headers: authHeaders(config),
-        body: JSON.stringify(
-          buildChatBody({
-            model: config.model,
-            messages,
-            stream: false,
-            json: true,
-            temperature: opts.temperature,
-            maxTokens: opts.maxTokens,
-          }),
-        ),
-      });
-      raw = await res.text();
-    } catch (cause) {
-      throw mapProviderError({ cause, provider: config.provider, status: 0 });
+      payload = JSON.parse(raw);
+    } catch {
+      payload = raw;
     }
+    return { status: res.status, raw, payload };
+  } catch (cause) {
+    if (cause instanceof Error && cause.name === 'AbortError') {
+      throw new GenerationTimeoutError();
+    }
+    throw mapProviderError({ cause, provider: config.provider, status: 0 });
+  } finally {
+    clearTimeout(timer);
   }
-  if (!res.ok) {
-    throw mapProviderError({ status: res.status, body: raw, provider: config.provider });
+}
+
+export async function openaiGenerate(
+  config: ResolvedProviderConfig,
+  messages: { role: string; content: string }[],
+  opts: OpenaiGenerateOpts = {},
+): Promise<string> {
+  const format: ResponseFormatStep = opts.format || (opts.jsonSchema ? 'json_schema' : opts.json ? 'json_object' : 'plain');
+  const retries = opts.retries ?? 2;
+  let lastStatus = 0;
+  let lastRaw = '';
+  let lastError = '';
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const result = await postChat(config, messages, opts, format);
+    lastStatus = result.status;
+    lastRaw = result.raw;
+    const upstream = chatPayloadError(result.payload);
+    if (upstream) {
+      lastError = upstream;
+      if (attempt < retries) {
+        await sleep(400 * (attempt + 1));
+        continue;
+      }
+      throw mapProviderError({ status: 503, body: upstream, provider: config.provider });
+    }
+    if (!result.status || result.status >= 400) {
+      throw mapProviderError({ status: result.status, body: result.raw, provider: config.provider });
+    }
+    if (typeof result.payload === 'object') {
+      const text = extractChatText(result.payload);
+      if (text) return text;
+    }
+    if (typeof result.raw === 'string' && result.raw.trim()) return result.raw;
+    lastError = 'Empty model response';
+    if (attempt < retries) await sleep(400 * (attempt + 1));
   }
 
-  try {
-    return extractChatText(JSON.parse(raw));
-  } catch {
-    return raw;
-  }
+  throw mapProviderError({
+    status: lastStatus || 502,
+    body: lastError || lastRaw,
+    provider: config.provider,
+  });
 }
 
 export async function openaiStream(

@@ -59,20 +59,21 @@ export function resolveProviderConfig(
   input: Partial<GenerateRequest>,
   env: EnvLike = {},
 ): ResolvedProviderConfig {
-  const provider = parseProviderId(input.provider || env.AI_PROVIDER, 'gemini');
+  const envProvider = env.AI_PROVIDER && isProviderId(env.AI_PROVIDER) ? env.AI_PROVIDER : undefined;
+  const provider = parseProviderId(envProvider || input.provider, 'gemini');
   const def = PROVIDERS[provider];
 
   const userBase = normalizeBaseUrl(input.baseUrl || '');
   const envBase = normalizeBaseUrl(env.AI_BASE_URL || '');
-  const baseUrl = userBase || envBase || def.defaultBaseUrl;
+  const baseUrl = envBase || userBase || def.defaultBaseUrl;
 
   const userModel = String(input.model || '').trim();
   const envModel = String(env.AI_MODEL || '').trim();
-  const model = userModel || envModel || def.defaultModel;
+  const model = envModel || userModel || def.defaultModel;
 
   const userKey = String(input.apiKey || '').trim();
   const envKey = envApiKey(env, provider);
-  const apiKey = userKey || envKey;
+  const apiKey = envKey || userKey;
 
   return {
     provider,
@@ -83,9 +84,9 @@ export function resolveProviderConfig(
     compatible: def.compatible,
     extraHeaders: { ...(def.extraHeaders || {}) },
     source: {
-      baseUrl: userBase ? 'user' : envBase ? 'env' : 'provider',
-      model: userModel ? 'user' : envModel ? 'env' : 'provider',
-      apiKey: userKey ? 'user' : envKey ? 'env' : 'none',
+      baseUrl: envBase ? 'env' : userBase ? 'user' : 'provider',
+      model: envModel ? 'env' : userModel ? 'user' : 'provider',
+      apiKey: envKey ? 'env' : userKey ? 'user' : 'none',
     },
   };
 }

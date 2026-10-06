@@ -218,7 +218,7 @@ describe('fallback quality', () => {
 
 describe('metric polarity', () => {
   it('infers lower-is-better from cost, risk, and friction names', () => {
-    for (const name of ['bounce', 'Bounce Rate', 'churn', 'CAC', 'customer acquisition cost', 'latency', 'errors', 'refunds', 'attrition', 'ad spend']) {
+    for (const name of ['bounce', 'Bounce Rate', 'churn', 'CAC', 'customer acquisition cost', 'latency', 'errors', 'refunds', 'attrition', 'ad spend', 'discount', 'DSO', 'opex']) {
       expect(inferMetricPolarity(name)).toBe('lower-is-better');
     }
     for (const name of ['revenue', 'sessions', 'conversions', 'profit', 'ROI']) {

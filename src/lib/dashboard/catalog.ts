@@ -51,6 +51,9 @@ const CHART_COMPONENT: Record<string, string> = {
 };
 
 export function nearestComponent(id?: string, type?: string, chartType?: string): CatalogEntry {
+  if (type === 'insight' || type === 'section') {
+    return COMPONENT_CATALOG.find((c) => c.id === 'arc.metric-card')!;
+  }
   if (id) {
     const exact = COMPONENT_CATALOG.find((c) => c.id === id);
     if (exact) return exact;
@@ -63,7 +66,7 @@ export function nearestComponent(id?: string, type?: string, chartType?: string)
     return COMPONENT_CATALOG.find((c) => c.id === CHART_COMPONENT[chartType])!;
   }
   if (type === 'chart') return COMPONENT_CATALOG.find((c) => c.id === 'arc.bar-chart')!;
-  return COMPONENT_CATALOG[0];
+  return COMPONENT_CATALOG.find((c) => c.id === 'arc.bar-chart')!;
 }
 
 export function repairCatalogWidgets(spec: import('./types').DashboardSpec, datasets: import('./types').DashboardDataset[]): import('./types').DashboardSpec {
@@ -75,13 +78,31 @@ export function repairCatalogWidgets(spec: import('./types').DashboardSpec, data
   const firstTime = [...names].find((n) => /date|month|week|opened/i.test(n));
 
   const widgets = spec.widgets.map((widget) => {
+    if (widget.type === 'insight' || widget.type === 'section') {
+      return { ...widget, componentId: undefined };
+    }
     const entry = nearestComponent(widget.componentId, widget.type, widget.chartType);
     const next = { ...widget, componentId: entry.id };
     if (next.type === 'chart') {
       if (next.xField && !names.has(next.xField)) next.xField = firstTime || firstDim || next.xField;
-      if (next.yField && !names.has(next.yField)) next.yField = firstMeasure || next.yField;
+      if (next.yField && !names.has(next.yField) && !next.measure) next.yField = firstMeasure || next.yField;
       if (!next.xField) next.xField = firstTime || firstDim;
-      if (!next.yField) next.yField = firstMeasure;
+      if (!next.yField && !next.measure) next.yField = firstMeasure;
+      const rateY = /rate|margin|discount|pct|percent/i.test(next.yField || next.title);
+      if ((next.chartType === 'donut' || next.chartType === 'pie' || next.componentId === 'arc.donut-chart') && rateY) {
+        next.chartType = 'bar';
+        next.componentId = 'arc.bar-chart';
+      }
+      if (next.componentId === 'sbi.small-multiples' && !next.groupField) {
+        const by = next.title.match(/by\s+([a-z0-9_ ]+)/i);
+        const facet = by?.[1]?.trim().replace(/\s+/g, '_');
+        if (facet && names.has(facet)) next.groupField = facet;
+        else next.groupField = firstDim;
+        if (!next.groupField) {
+          next.componentId = 'arc.line-chart';
+          next.chartType = 'line';
+        }
+      }
     }
     if (next.type === 'kpi' && next.kpi?.field && !names.has(next.kpi.field) && !next.measure) {
       next.kpi = { ...next.kpi, field: firstMeasure };
@@ -90,7 +111,7 @@ export function repairCatalogWidgets(spec: import('./types').DashboardSpec, data
     return next;
   }).filter((widget) => {
     if (widget.type !== 'chart') return true;
-    return Boolean(widget.xField && widget.yField);
+    return Boolean(widget.xField && (widget.yField || widget.measure));
   });
 
   return { ...spec, widgets };

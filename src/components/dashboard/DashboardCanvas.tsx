@@ -4,6 +4,7 @@ import { CHART_TYPES } from '../../lib/dashboard/types';
 import { classifyFields } from '../../lib/dashboard/insights';
 import { parseLocalDate, toLocalISODate } from '../../lib/dashboard/dates';
 import { harmonizePalette } from '../../lib/dashboard/palettes';
+import { DateRangePicker, type DateRangeValue } from '../arc/date-range-picker/date-range-picker';
 import { WidgetCard } from './WidgetCard';
 
 const COLS = 12;
@@ -35,7 +36,13 @@ export function DashboardCanvas({
 }) {
   const gap = spec.theme.density === 'compact' ? 12 : 14;
   const rowHeight = rowHeightFor(spec.theme.density);
-  const palette = useMemo(() => harmonizePalette(spec.theme.palette, spec.theme.palette.mode), [spec.theme.palette]);
+  const pageMode = (typeof document !== 'undefined'
+    ? (document.documentElement.getAttribute('data-theme') as 'light' | 'dark' | null)
+    : null) || spec.theme.palette.mode;
+  const palette = useMemo(
+    () => harmonizePalette(spec.theme.palette, pageMode === 'dark' || pageMode === 'light' ? pageMode : spec.theme.palette.mode),
+    [spec.theme.palette, pageMode],
+  );
   const themedSpec = useMemo(() => ({ ...spec, theme: { ...spec.theme, palette } }), [spec, palette]);
   const fields = datasets[0] ? classifyFields(datasets[0]) : { measures: [], dimensions: [], time: [] };
 
@@ -43,18 +50,17 @@ export function DashboardCanvas({
   const [compare, setCompare] = useState<'none' | 'previous-period' | 'previous-year'>('none');
   const [slicer, setSlicer] = useState('');
   const [slicerField, setSlicerField] = useState(fields.dimensions[0] || '');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  const [range, setRange] = useState<DateRangeValue>({ from: '', to: '', preset: 'custom' });
   const [drill, setDrill] = useState<string[]>([]);
 
   const timeField = fields.time[0];
   const extraFilters = useMemo(() => {
     const next = [...filters];
     if (slicerField && slicer) next.push({ field: slicerField, op: 'equals', value: slicer });
-    if (timeField && from) next.push({ field: timeField, op: 'gte', value: from });
-    if (timeField && to) next.push({ field: timeField, op: 'lte', value: to });
+    if (timeField && range.from) next.push({ field: timeField, op: 'gte', value: range.from });
+    if (timeField && range.to) next.push({ field: timeField, op: 'lte', value: range.to });
     return next;
-  }, [filters, slicer, slicerField, from, to, timeField]);
+  }, [filters, slicer, slicerField, range, timeField]);
 
   const addFilter = (field: string, value: string) => {
     setFilters((current) => {
@@ -85,7 +91,7 @@ export function DashboardCanvas({
 
   return (
     <div
-      className={`${spec.theme.fontFamily} dash-board w-full`}
+      className={`${spec.theme.fontFamily} dash-board dash-page w-full`}
       style={{ color: palette.text }}
       data-ssr={ssr ? '1' : undefined}
     >
@@ -102,28 +108,7 @@ export function DashboardCanvas({
 
       <div className="dash-toolbar mb-4 flex flex-wrap items-center gap-2">
         {timeField && (
-          <>
-            <label className="text-[11px]" style={{ color: palette.muted }}>
-              From
-              <input
-                type="date"
-                className="ml-1 rounded-lg border px-2 py-1 text-[12px] bg-transparent"
-                style={{ borderColor: palette.border }}
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-              />
-            </label>
-            <label className="text-[11px]" style={{ color: palette.muted }}>
-              To
-              <input
-                type="date"
-                className="ml-1 rounded-lg border px-2 py-1 text-[12px] bg-transparent"
-                style={{ borderColor: palette.border }}
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-              />
-            </label>
-          </>
+          <DateRangePicker value={range} onChange={setRange} accent={palette.accent} muted={palette.muted} />
         )}
         {fields.dimensions[0] && (
           <select

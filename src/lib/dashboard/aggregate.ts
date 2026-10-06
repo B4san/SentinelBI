@@ -1,9 +1,10 @@
 import { classifyFields, looksLikeTime, metricFormat, periodChange, sparklineValues } from './insights';
-import { parseLocalDate } from './dates';
+import { parseLocalDate, startOfGrain, toLocalISODate } from './dates';
 import { aggregateNumber, formatMetric } from './format';
 import { computeWidgetKpi } from './facts';
-import { inferAggregation, looksLikeDuration } from './measures';
-import { bucketTimeSeries } from './timeGrain';
+import { isDerivedMeasure } from './ids';
+import { computeDerivedValue, inferAggregation, looksLikeDuration, unitForField } from './measures';
+import { autoTimeGrain, bucketTimeSeries } from './timeGrain';
 import type { DashboardDataset, DashboardWidget, FilterOp, WidgetFilter } from './types';
 
 export { aggregateNumber, formatMetric };
@@ -51,6 +52,12 @@ export function resolveDataset(datasets: DashboardDataset[], datasetId?: string)
   return datasets.find((d) => d.id === datasetId) || datasets[0];
 }
 
+function grainKey(value: unknown, grain: ReturnType<typeof autoTimeGrain>): string {
+  const date = parseLocalDate(value);
+  if (!date) return '';
+  return toLocalISODate(startOfGrain(date, grain));
+}
+
 export function prepareChartSeries(
   datasets: DashboardDataset[],
   widget: DashboardWidget,
@@ -63,9 +70,15 @@ export function prepareChartSeries(
   for (const filter of extraFilters) rows = applyFilter(rows, filter);
   rows = applyFilter(rows, widget.filter);
 
+  const names = new Set(dataset.columns?.map((c) => c.name) || Object.keys(dataset.data?.[0] || {}));
   const xField = widget.xField;
   const yField = widget.yField;
   if (!xField) return [];
+
+  const knownSeries = (widget.series || []).filter((s) => names.has(s.field) || s.field.startsWith('__'));
+  if (widget.series?.length && knownSeries.length === 0 && !widget.measure && yField && !names.has(yField)) {
+    return [];
+  }
 
   if (widget.chartType === 'scatter' || widget.chartType === 'bubble') {
     const points: Array<Record<string, string | number>> = [];
@@ -79,48 +92,85 @@ export function prepareChartSeries(
   }
 
   const aggregation = widget.aggregation || inferAggregation(yField);
-  const seriesFields = widget.series?.length ? widget.series.map((s) => s.field) : yField ? [yField] : [];
+  const seriesFields = (knownSeries.length ? knownSeries.map((s) => s.field) : yField && names.has(yField) ? [yField] : [])
+    .filter((field) => field && (field.startsWith('__') || names.has(field)));
+  const units = new Map<string, string>();
+  for (const field of seriesFields) units.set(field, unitForField(field));
+  const primaryUnit = yField ? unitForField(yField) : units.get(seriesFields[0] || '');
+  const allowed = seriesFields.filter((field) => {
+    const series = widget.series?.find((s) => s.field === field);
+    if (series?.axis === 'right') return true;
+    return !primaryUnit || units.get(field) === primaryUnit;
+  });
+  const measureFields = allowed.length ? allowed : seriesFields.slice(0, 1);
   const timeSeries = looksLikeTime(xField, rows.map((row) => row[xField]));
+  const derived = isDerivedMeasure(widget.measure) ? widget.measure : undefined;
+  const valueKey = yField || derived?.numerator.field || measureFields[0] || 'value';
 
-  if (timeSeries && seriesFields[0]) {
-    const buckets = new Map<string, Record<string, string | number>>();
-    for (const field of seriesFields) {
-      const grain = bucketTimeSeries(rows, xField, field, aggregation);
-      for (const item of grain) {
-        const rec = buckets.get(item.key) || { [xField]: item.key, name: item.label, label: item.label };
-        rec[field] = item.value;
-        if (field === seriesFields[0]) rec.value = item.value;
-        buckets.set(item.key, rec);
+  if (timeSeries && (measureFields[0] || derived)) {
+    const grain = autoTimeGrain(rows.map((row) => row[xField]));
+    const grouped = new Map<string, Record<string, unknown>[]>();
+    for (const row of rows) {
+      const key = grainKey(row[xField], grain);
+      if (!key) continue;
+      const bucket = grouped.get(key) || [];
+      bucket.push(row);
+      grouped.set(key, bucket);
+    }
+    const keys = [...grouped.keys()].sort();
+    const out = keys.map((key) => {
+      const slice = grouped.get(key) || [];
+      const date = parseLocalDate(key);
+      const label = date ? bucketTimeSeries(slice, xField, derived?.numerator.field || measureFields[0] || valueKey, 'sum', grain, { keepPartial: true })[0]?.label || key : key;
+      const rec: Record<string, string | number> = { [xField]: key, name: label, label };
+      if (derived) {
+        const value = computeDerivedValue(slice, derived, xField);
+        rec.value = value;
+        rec[valueKey] = value;
+      } else {
+        for (const field of measureFields) {
+          const nums = slice.map((row) => Number(row[field])).filter((n) => !Number.isNaN(n));
+          rec[field] = Number(aggregateNumber(nums, inferAggregation(field) || aggregation).toFixed(4));
+        }
+        rec.value = Number(rec[measureFields[0]] ?? 0);
       }
+      return rec;
+    });
+    const complete = bucketTimeSeries(rows, xField, measureFields[0] || derived?.numerator.field || valueKey, 'sum', grain);
+    const allowedKeys = new Set(complete.map((b) => b.key));
+    const trimmed = out.filter((row) => allowedKeys.has(String(row[xField])));
+    const compare = widget.compare === 'prior-year' ? 'previous-year' : widget.compare === 'prior-period' ? 'previous-period' : widget.compare;
+    if (compare && measureFields[0]) {
+      const shifted = previousPeriodSeries(rows, xField, measureFields[0], aggregation, compare);
+      return trimmed.map((row, i) => ({ ...row, __compare: shifted[i] ?? 0 }));
     }
-    const out = Array.from(buckets.values());
-    if (widget.compare && timeSeries) {
-      const shifted = previousPeriodSeries(rows, xField, seriesFields[0], aggregation, widget.compare);
-      return out.map((row, i) => ({ ...row, __compare: shifted[i] ?? 0 }));
-    }
-    return out;
+    return trimmed;
   }
 
-  const groups = new Map<string, Record<string, number[]>>();
+  const groups = new Map<string, Record<string, unknown>[]>();
   for (const row of rows) {
     const key = String(row[xField] ?? '');
     if (!key) continue;
-    const bucket = groups.get(key) || {};
-    for (const field of seriesFields.length ? seriesFields : [yField || '']) {
-      const raw = field ? Number(row[field]) : 1;
-      const value = field && !Number.isNaN(raw) ? raw : 1;
-      bucket[field || 'value'] = bucket[field || 'value'] || [];
-      bucket[field || 'value'].push(value);
-    }
+    const bucket = groups.get(key) || [];
+    bucket.push(row);
     groups.set(key, bucket);
   }
 
-  const series = Array.from(groups.entries()).map(([name, values]) => {
+  const series = Array.from(groups.entries()).map(([name, slice]) => {
     const rec: Record<string, string | number> = { [xField]: name, name };
-    for (const [field, nums] of Object.entries(values)) {
-      rec[field] = Number(aggregateNumber(nums, field && yField ? aggregation : 'count').toFixed(4));
+    if (derived) {
+      const value = computeDerivedValue(slice, derived, undefined);
+      rec.value = value;
+      rec[valueKey] = value;
+      return rec;
     }
-    rec.value = Number(rec[seriesFields[0] || yField || 'value'] ?? rec.value ?? 0);
+    const fields = measureFields.length ? measureFields : [yField || ''];
+    for (const field of fields) {
+      if (!field) continue;
+      const nums = slice.map((row) => Number(row[field])).filter((n) => !Number.isNaN(n));
+      rec[field] = Number(aggregateNumber(nums, inferAggregation(field) || aggregation).toFixed(4));
+    }
+    rec.value = Number(rec[fields[0] || 'value'] ?? 0);
     return rec;
   });
 
@@ -128,7 +178,20 @@ export function prepareChartSeries(
     series.sort((a, b) => Number(b.value) - Number(a.value));
   }
 
-  return series.slice(0, widget.chartType === 'pie' || widget.chartType === 'donut' ? 8 : series.length);
+  if (widget.chartType === 'pie' || widget.chartType === 'donut') {
+    const top = series.slice(0, 7);
+    const rest = series.slice(7);
+    if (rest.length) {
+      top.push({
+        [xField]: 'Other',
+        name: 'Other',
+        value: rest.reduce((acc, row) => acc + Number(row.value || 0), 0),
+      });
+    }
+    return top;
+  }
+
+  return series;
 }
 
 function previousPeriodSeries(

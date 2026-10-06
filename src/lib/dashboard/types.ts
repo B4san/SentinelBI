@@ -70,17 +70,20 @@ export interface MeasureRef {
 }
 
 export interface DerivedMeasure {
-  kind: 'ratio' | 'difference' | 'margin';
+  kind: 'ratio' | 'difference' | 'margin' | 'weighted';
   numerator: MeasureRef;
   denominator: MeasureRef;
   format?: MeasureFormat;
 }
 
+export type WidgetMeasure = DerivedMeasure | (MeasureRef & { format?: MeasureFormat; kind?: 'simple' });
+
 export interface WidgetSeries {
   field: string;
   label?: string;
-  style?: 'line' | 'bar' | 'area' | 'dashed';
+  style?: 'line' | 'bar' | 'area' | 'dashed' | 'target';
   color?: string;
+  axis?: 'left' | 'right';
 }
 
 export interface TableQuery {
@@ -137,11 +140,11 @@ export interface DashboardWidget {
   role?: 'hero' | 'support' | 'compare-a' | 'compare-b' | 'strip' | 'featured';
   polarity?: MetricPolarity;
   componentId?: string;
-  measure?: DerivedMeasure;
+  measure?: WidgetMeasure;
   series?: WidgetSeries[];
   table?: TableQuery;
   targetField?: string;
-  compare?: 'previous-period' | 'previous-year';
+  compare?: 'previous-period' | 'previous-year' | 'prior-period' | 'prior-year';
   kpi?: {
     value: string;
     trend?: string;

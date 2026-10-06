@@ -3,7 +3,7 @@ import { METRIC_POLARITIES, type Aggregation, type DashboardWidget, type MetricP
 export { METRIC_POLARITIES };
 export type { MetricPolarity };
 
-const LOWER_IS_BETTER = /\b(bounce|churn|attrition|cac|cpc|cpa|cpm|cogs|latency|error|errors|refund|refunds|complaint|complaints|downtime|cancel|cancellation|cancellations|abandon|abandonment|defect|defects|fail|failure|failures|loss|losses|idle|wait|waiting|spend|expense|expenses|cost|costs|waste|delay|delays|overdue|reject|rejection|drop|drops|friction|unpaid|debt|default|defaults|sla|incident|incidents)\b/i;
+const LOWER_IS_BETTER = /\b(bounce|churn|attrition|cac|cpc|cpa|cpm|cogs|latency|error|errors|refund|refunds|complaint|complaints|downtime|cancel|cancellation|cancellations|abandon|abandonment|defect|defects|fail|failure|failures|loss|losses|idle|wait|waiting|spend|expense|expenses|cost|costs|waste|delay|delays|overdue|reject|rejection|drop|drops|friction|unpaid|debt|default|defaults|sla|incident|incidents|discount|dso|opex)\b/i;
 
 const HIGHER_OVERRIDE = /\b(roi|return on|revenue|revenues|profit|profits|margin|conversion|conversions|session|sessions)\b/i;
 
@@ -46,6 +46,30 @@ export function isDeltaFavorable(delta: number, polarity: MetricPolarity = 'high
 export function deltaColor(delta: number, polarity: MetricPolarity = 'higher-is-better'): string {
   if (delta === 0) return '#64748b';
   return isDeltaFavorable(delta, polarity) ? '#059669' : '#e11d48';
+}
+
+export function isRateMetric(name?: string, format?: string): boolean {
+  if (format === 'percent') return true;
+  return /margin|discount|cvr|conversion rate|bounce|attrition|accept/i.test(name || '');
+}
+
+export function isNoisyDelta(delta: number, rate = false): boolean {
+  return Math.abs(delta) < (rate ? 0.08 : 0.15);
+}
+
+export function formatDeltaLabel(delta: number, opts: { rate?: boolean; polarity?: MetricPolarity } = {}): {
+  label: string;
+  color: string;
+  flat: boolean;
+} {
+  const polarity = opts.polarity || 'higher-is-better';
+  if (isNoisyDelta(delta, opts.rate)) {
+    return { label: 'flat', color: '#64748b', flat: true };
+  }
+  const label = opts.rate
+    ? `${delta >= 0 ? '+' : ''}${delta.toFixed(1)} pp`
+    : `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}%`;
+  return { label, color: deltaColor(delta, polarity), flat: false };
 }
 
 export function sanitizePolarity(value: unknown, field?: string, title?: string): MetricPolarity {

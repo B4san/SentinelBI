@@ -71,7 +71,9 @@ export function VisualModel() {
       mode: appearance.mode,
     });
     persist(result.spec);
-    setStatus(result.source === 'ai' ? 'Generated from the configured provider.' : result.error || 'Used a data-fitted layout (no live model).');
+    setStatus(result.source === 'ai'
+      ? 'Generated from the configured provider.'
+      : result.fallbackReason || result.error || 'Used a data-fitted layout (no live model).');
     setBusy(false);
     setPrompt('');
   };

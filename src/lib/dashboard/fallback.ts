@@ -67,7 +67,7 @@ function chooseChartType(
 
   const pool: ChartType[] = [];
   if (opts.hasTime) pool.push('area', 'line', 'bar');
-  if (opts.hasCategory) pool.push('bar', 'horizontal-bar', 'donut');
+  if (opts.hasCategory) pool.push('bar', 'horizontal-bar', 'donut', 'treemap');
   if (opts.featured && opts.hasTime) pool.push('area', 'line');
   if (pool.length === 0) pool.push('bar');
   const unused = pool.filter((t) => !opts.used.has(t));
@@ -76,8 +76,8 @@ function chooseChartType(
 
 function kpiTitle(field: string | undefined, aggregation: Aggregation): string {
   if (!field) return 'Metric';
-  const name = prettyField(field);
-  if (aggregation === 'avg') return `Avg ${name.toLowerCase()}`;
+  const name = prettyField(field).replace(/seconds/i, 'duration').replace(/dso days/i, 'DSO');
+  if (aggregation === 'avg' || /^avg_|_rate$|_seconds$/i.test(field)) return `Avg ${name.toLowerCase()}`;
   if (aggregation === 'max') return `Peak ${name.toLowerCase()}`;
   if (aggregation === 'min') return `Floor ${name.toLowerCase()}`;
   return `Total ${name.toLowerCase()}`;
@@ -139,15 +139,25 @@ export function buildBusinessKpis(dataset: DashboardDataset): DerivedKpi[] {
 
   for (const candidate of proposeDerivedMeasures(dataset)) {
     const raw = candidate.measure;
-    push({
-      title: candidate.title,
-      field: raw.numerator.field,
-      aggregation: raw.numerator.agg || 'sum',
-      format: raw.format || 'number',
-      value: computeDerivedValue(rows, raw),
-      polarity: inferMetricPolarity(candidate.title),
-      measure: raw,
-    });
+    if (raw) {
+      push({
+        title: candidate.title,
+        field: raw.numerator.field,
+        aggregation: raw.numerator.agg || 'sum',
+        format: raw.format || 'number',
+        value: computeDerivedValue(rows, raw),
+        polarity: inferMetricPolarity(candidate.title),
+        measure: raw,
+      });
+      continue;
+    }
+    if (candidate.field) {
+      push(measureKpi(rows, candidate.field, candidate.agg || 'avg', times[0], {
+        title: candidate.title,
+        format: candidate.format,
+        polarity: inferMetricPolarity(candidate.title),
+      }));
+    }
   }
 
   if (nums[0] && cats[0]) {
@@ -218,7 +228,15 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
   const palette = ctx.paletteId
     ? pickPaletteForMode(ctx.paletteId, mode)
     : pick(rng, palettesForMode(mode).length ? palettesForMode(mode) : PALETTES);
-  const derivedKpis = buildBusinessKpis(primary);
+  const derivedKpis = buildBusinessKpis(primary).sort((a, b) => {
+    const intent = (ctx.intent || '').toLowerCase();
+    const score = (kpi: DerivedKpi) => {
+      if (intent && kpi.title.toLowerCase().split(/\s+/).some((word) => intent.includes(word))) return -2;
+      if (/discount|margin|bounce/.test(intent) && /discount|margin|bounce/i.test(kpi.title)) return -1;
+      return 0;
+    };
+    return score(a) - score(b);
+  });
   const slots = slotsForArchetype(archetype, derivedKpis.length);
   const usedTypes = new Set<string>();
   const widgets: DashboardWidget[] = [];
@@ -287,7 +305,7 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
       widgets.push({
         id: `section-${index}`,
         type: 'section',
-        title: story.headline,
+        title: story.headline && normalizeTitle(story.headline) !== normalizeTitle(ctx.title || '') ? story.headline : 'Overview',
         layout: slot.layout,
       });
       return;
@@ -298,7 +316,9 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
       widgets.push({
         id: `table-${index}`,
         type: 'table',
-        title: measure ? `Top 15 rows by ${prettyField(measure).toLowerCase()}` : 'Detail slice',
+        title: cats[0] && measure
+          ? `${prettyField(cats[0])}${cats[1] ? ` × ${prettyField(cats[1])}` : ''} by ${prettyField(measure).toLowerCase()}`
+          : measure ? `Top 12 by ${prettyField(measure).toLowerCase()}` : 'Detail slice',
         layout: slot.layout,
         datasetId: primary.id,
         componentId: 'arc.sortable-data-table',
@@ -306,7 +326,8 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
         table: measure
           ? {
               sort: { field: measure, dir: 'desc' },
-              limit: 15,
+              limit: 12,
+              groupBy: cats.slice(0, Math.min(2, cats.length)),
               measures: nums.slice(0, 3).map((field) => ({ field, agg: metricFormat(field) === 'percent' ? 'avg' as const : 'sum' as const, format: metricFormat(field) })),
             }
           : undefined,
@@ -322,9 +343,10 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
         : preferTime || (times[0] && slot.featured)
           ? times[0]
           : cats[chartCursor % Math.max(cats.length, 1)] || times[0] || nums[0];
+    const intentShift = Math.abs(makeSeed([ctx.intent, slot.role, chartCursor])) % Math.max(nums.length, 1);
     const yField = slot.role === 'compare-b'
       ? (nums[1] || nums[0])
-      : nums[chartCursor % Math.max(nums.length, 1)] || nums[0];
+      : nums[(chartCursor + intentShift) % Math.max(nums.length, 1)] || nums[0];
     const encoding = `${xField}:${yField}`;
     let chartType = chooseChartType(rng, slot.prefer, {
       hasTime: Boolean(times[0] && xField === times[0]),
@@ -349,15 +371,32 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
 
     const yPretty = prettyField(yField || 'value');
     const xPretty = prettyField(xField || 'category');
-
     const budget = nums.find((n) => /budget/i.test(n));
-    const series = budget && yField && /opex|revenue|ebitda/i.test(yField)
-      ? [{ field: yField, style: 'bar' as const }, { field: budget, style: 'dashed' as const, label: prettyField(budget) }]
-      : undefined;
+    const wantBullet = Boolean(budget && slot.prefer?.includes('bar') && /opex|ebitda/i.test(yField || ''));
+    const wantMultiples = Boolean(slot.prefer?.includes('area') === false && times[0] && cats[0] && chartType === 'line' && !slot.featured);
+    if (wantBullet) chartType = 'bar';
+    if (slot.prefer?.includes('treemap')) chartType = 'treemap';
+    const series = wantBullet && budget && yField
+      ? [{ field: yField, style: 'bar' as const }, { field: budget, style: 'target' as const, label: prettyField(budget) }]
+      : budget && yField && /opex|revenue|ebitda/i.test(yField)
+        ? [{ field: yField, style: 'bar' as const }, { field: budget, style: 'dashed' as const, label: prettyField(budget) }]
+        : undefined;
+    const componentId = wantBullet
+      ? 'sbi.bullet-variance'
+      : wantMultiples
+        ? 'sbi.small-multiples'
+        : nearestComponent(undefined, 'chart', chartType).id;
+    const title = wantBullet
+      ? `${yPretty} vs budget`
+      : wantMultiples
+        ? `${yPretty} by ${prettyField(cats[0])}`
+        : chartType === 'treemap'
+          ? `${yPretty} mix`
+          : yField && xField ? `${yPretty} by ${xPretty}` : 'Distribution';
     widgets.push({
       id: `chart-${index}`,
       type: 'chart',
-      title: yField && xField ? `${yPretty} by ${xPretty}` : 'Distribution',
+      title,
       subtitle: slot.role === 'compare-a' || slot.role === 'compare-b'
         ? `Compared on ${xPretty}`
         : undefined,
@@ -365,12 +404,12 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
       role: slot.role || (slot.featured ? 'hero' : undefined),
       chartType,
       datasetId: primary.id,
-      xField,
+      xField: wantMultiples ? times[0] : xField,
       yField,
-      componentId: nearestComponent(undefined, 'chart', chartType).id,
+      componentId,
       series,
       targetField: budget,
-      groupField: cats[(chartCursor + 1) % Math.max(cats.length, 1)],
+      groupField: wantMultiples ? cats[0] : cats[(chartCursor + 1) % Math.max(cats.length, 1)],
       color: palette.chart[index % palette.chart.length],
       aggregation: metricFormat(yField) === 'percent' ? 'avg' : 'sum',
     });
@@ -384,7 +423,9 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
     version: 1,
     id: `dash-${seed.toString(16)}`,
     title: ctx.title || deriveTitle(ctx.intent, archetype),
-    subtitle: story.headline,
+    subtitle: story.headline && normalizeTitle(story.headline) !== normalizeTitle(ctx.title || deriveTitle(ctx.intent, archetype))
+      ? story.headline
+      : undefined,
     intent: ctx.intent,
     archetype,
     seed,
@@ -418,6 +459,10 @@ function deriveTitle(intent: string | undefined, archetype: LayoutArchetype): st
     'funnel-flow': 'Flow review',
   };
   return titles[archetype];
+}
+
+function normalizeTitle(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
 export function varyWidget(widget: DashboardWidget, datasets: DashboardDataset[], seed: number): DashboardWidget {

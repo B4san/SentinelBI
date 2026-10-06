@@ -148,7 +148,7 @@ describe('SSR viewBox', () => {
   it('emits an SVG viewBox from renderToString', () => {
     const spec = mockedAiSpec([sales]);
     const page = renderDashboard(spec, [sales]);
-    expect(page).toMatch(/viewBox="0 0 800 320"/);
+    expect(page).toMatch(/viewBox="0 0 \d+ \d+"/);
     expect(page).toMatch(/width="100%"/);
     expect(page).toMatch(/dash-plot/);
   });

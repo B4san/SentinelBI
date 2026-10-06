@@ -3,7 +3,7 @@ import { ArrowDownRight, ArrowUpRight, Filter, GripVertical, RefreshCw } from 'l
 import type { DashboardDataset, DashboardSpec, DashboardWidget } from '../../lib/dashboard/types';
 import { computeKpiStats, formatMetric } from '../../lib/dashboard/aggregate';
 import { metricFormat, prettyField } from '../../lib/dashboard/insights';
-import { deltaColor, inferMetricPolarity } from '../../lib/dashboard/metrics';
+import { formatDeltaLabel, inferMetricPolarity, isRateMetric } from '../../lib/dashboard/metrics';
 import { prepareTableModel } from '../../lib/dashboard/table';
 import type { WidgetFilter } from '../../lib/dashboard/types';
 import { ChartRenderer } from './ChartRenderer';
@@ -54,14 +54,6 @@ export function WidgetCard({
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               {editing && <GripVertical className="w-3.5 h-3.5 shrink-0 opacity-40 cursor-grab" data-drag-handle="true" />}
-              {(widget.role === 'compare-a' || widget.role === 'compare-b') && (
-                <span
-                  className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
-                  style={{ background: palette.accentSoft, color: palette.accent }}
-                >
-                  {widget.role === 'compare-a' ? 'A' : 'B'}
-                </span>
-              )}
               <h3 className={`${spec.theme.headingFont || spec.theme.fontFamily} text-[13px] font-semibold leading-snug truncate`}>
                 {widget.title}
               </h3>
@@ -139,35 +131,29 @@ function WidgetBody({
     const stats = computeKpiStats(datasets, widget, filters);
     const delta = stats.delta;
     const polarity = widget.kpi?.polarity || widget.polarity || inferMetricPolarity(widget.kpi?.field || widget.yField || widget.title);
-    const down = (delta ?? 0) < 0;
     const hero = widget.role === 'hero' || widget.layout.h >= 4 || (widget.role === 'compare-a' || widget.role === 'compare-b') && widget.layout.h >= 3;
-    const compare = widget.role === 'compare-a' || widget.role === 'compare-b';
+    const pretty = delta == null ? undefined : formatDeltaLabel(delta, {
+      rate: stats.format === 'percent' || isRateMetric(widget.title, stats.format),
+      polarity,
+    });
     return (
       <div className={`h-full flex flex-col ${hero ? 'justify-between px-5 py-4' : 'justify-center gap-1.5 px-4 py-3'}`}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               {editing && <GripVertical className="w-3 h-3 shrink-0 opacity-40 cursor-grab" data-drag-handle="true" />}
-              {compare && (
-                <span
-                  className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
-                  style={{ background: palette.accentSoft, color: palette.accent }}
-                >
-                  {widget.role === 'compare-a' ? 'A' : 'B'}
-                </span>
-              )}
               <p className="text-[12px] font-medium truncate" style={{ color: palette.muted }}>
                 {widget.title}
               </p>
             </div>
           </div>
-          {delta != null && (
+          {pretty && (
             <span
               className="inline-flex items-center gap-0.5 text-[11px] font-semibold shrink-0"
-              style={{ color: deltaColor(delta, polarity) }}
+              style={{ color: pretty.color }}
             >
-              {down ? <ArrowDownRight className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
-              {`${delta >= 0 ? '+' : ''}${delta.toFixed(1)}%`}
+              {!pretty.flat && ((delta ?? 0) < 0 ? <ArrowDownRight className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />)}
+              {pretty.label}
             </span>
           )}
         </div>
@@ -234,13 +220,31 @@ function WidgetBody({
             </tr>
           </thead>
           <tbody>
-            {model.rows.map((row, i) => (
-              <tr key={i} className="border-t" style={{ borderColor: palette.border }}>
-                {model.columns.map((c) => (
-                  <td key={c} className="py-1.5 pr-3 tabular-nums">{String(row[c] ?? '')}</td>
-                ))}
+            {model.rows.map((row, i) => {
+              const isTotal = String(row[model.columns[0]] || '').toLowerCase() === 'total';
+              return (
+              <tr key={i} className="border-t" style={{ borderColor: palette.border, fontWeight: isTotal ? 600 : 400 }}>
+                {model.columns.map((c) => {
+                  const raw = model.rawRows[i]?.[c];
+                  const bar = model.barField === c && typeof raw === 'number';
+                  const max = bar
+                    ? Math.max(...model.rawRows.map((r) => Number(r[c]) || 0), 1)
+                    : 1;
+                  return (
+                    <td key={c} className="py-1.5 pr-3 tabular-nums relative">
+                      {bar && (
+                        <span
+                          className="absolute inset-y-1 left-0 rounded-sm opacity-20"
+                          style={{ width: `${(Number(raw) / max) * 100}%`, background: palette.accent }}
+                        />
+                      )}
+                      <span className="relative">{String(row[c] ?? '')}</span>
+                    </td>
+                  );
+                })}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

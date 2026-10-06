@@ -35,10 +35,11 @@ export function formatLocalDate(value: unknown, grain: 'day' | 'week' | 'month' 
     return `Q${Math.floor(date.getMonth() / 3) + 1} ${date.getFullYear()}`;
   }
   if (grain === 'month') {
-    return date.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+    const mon = date.toLocaleDateString(undefined, { month: 'short' });
+    return `${mon} ${String(date.getFullYear()).slice(2)}`;
   }
   if (grain === 'week') {
-    return `Week of ${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }

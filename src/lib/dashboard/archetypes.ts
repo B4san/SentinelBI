@@ -74,6 +74,9 @@ function executiveSlots(kpiCount: number): ArchetypeSlot[] {
     { type: 'chart', layout: { x: 0, y: 6, w: 12, h: 6 }, featured: true, prefer: ['area', 'line'] },
     { type: 'chart', layout: { x: 0, y: 12, w: 6, h: 5 }, prefer: ['bar'] },
     { type: 'chart', layout: { x: 6, y: 12, w: 6, h: 5 }, prefer: ['donut', 'horizontal-bar'] },
+    { type: 'chart', layout: { x: 0, y: 17, w: 6, h: 5 }, prefer: ['treemap'] },
+    { type: 'chart', layout: { x: 6, y: 17, w: 6, h: 5 }, prefer: ['horizontal-bar'] },
+    { type: 'table', layout: { x: 0, y: 22, w: 12, h: 5 } },
   ];
 }
 
@@ -96,6 +99,9 @@ function editorialSlots(kpiCount: number): ArchetypeSlot[] {
   slots.push(
     { type: 'chart', layout: { x: 0, y, w: 6, h: 5 }, prefer: ['bar'] },
     { type: 'chart', layout: { x: 6, y, w: 6, h: 5 }, prefer: ['donut', 'bar'] },
+    { type: 'chart', layout: { x: 0, y: y + 5, w: 6, h: 5 }, prefer: ['treemap'] },
+    { type: 'chart', layout: { x: 6, y: y + 5, w: 6, h: 5 }, prefer: ['horizontal-bar'] },
+    { type: 'table', layout: { x: 0, y: y + 10, w: 12, h: 5 } },
   );
   return slots;
 }
@@ -128,8 +134,10 @@ function analyticalSlots(kpiCount: number): ArchetypeSlot[] {
   slots.push(
     { type: 'chart', layout: { x: 0, y: 7, w: 4, h: 5 }, prefer: ['donut'] },
     { type: 'chart', layout: { x: 4, y: 7, w: 8, h: 5 }, prefer: ['bar'] },
-    { type: 'chart', layout: { x: 0, y: 12, w: 12, h: 5 }, prefer: ['horizontal-bar'] },
-    { type: 'table', layout: { x: 0, y: 17, w: 12, h: 4 } },
+    { type: 'chart', layout: { x: 0, y: 12, w: 6, h: 5 }, prefer: ['horizontal-bar'] },
+    { type: 'chart', layout: { x: 6, y: 12, w: 6, h: 5 }, prefer: ['treemap'] },
+    { type: 'table', layout: { x: 0, y: 17, w: 12, h: 5 } },
+    { type: 'insight', layout: { x: 0, y: 22, w: 12, h: 2 }, role: 'strip' },
   );
   return slots;
 }
@@ -192,7 +200,10 @@ function mosaicSlots(kpiCount: number): ArchetypeSlot[] {
   const after = Math.max(...slots.map((s) => s.layout.y + s.layout.h));
   slots.push(
     { type: 'chart', layout: { x: 0, y: after, w: 12, h: 5 }, featured: true, prefer: ['area', 'bar'] },
-    { type: 'insight', layout: { x: 0, y: after + 5, w: 12, h: 2 }, role: 'strip' },
+    { type: 'chart', layout: { x: 0, y: after + 5, w: 6, h: 5 }, prefer: ['donut', 'treemap'] },
+    { type: 'chart', layout: { x: 6, y: after + 5, w: 6, h: 5 }, prefer: ['horizontal-bar'] },
+    { type: 'insight', layout: { x: 0, y: after + 10, w: 12, h: 2 }, role: 'strip' },
+    { type: 'table', layout: { x: 0, y: after + 12, w: 12, h: 5 } },
   );
   return slots;
 }
@@ -205,8 +216,11 @@ function comparisonSlots(kpiCount: number): ArchetypeSlot[] {
     { type: 'chart', layout: { x: 0, y: 3, w: 6, h: 5 }, featured: true, role: 'compare-a', prefer: ['bar'] },
     { type: 'chart', layout: { x: 6, y: 3, w: 6, h: 5 }, featured: true, role: 'compare-b', prefer: ['bar'] },
     { type: 'insight', layout: { x: 0, y: 8, w: 12, h: 2 }, role: 'strip' },
+    { type: 'chart', layout: { x: 0, y: 10, w: 6, h: 5 }, prefer: ['donut', 'treemap'] },
+    { type: 'chart', layout: { x: 6, y: 10, w: 6, h: 5 }, prefer: ['horizontal-bar'] },
+    { type: 'table', layout: { x: 0, y: 15, w: 12, h: 5 } },
   ];
-  if (extra > 0) slots.push(...kpiRow(Math.min(2, extra), 10, 2));
+  if (extra > 0) slots.push(...kpiRow(Math.min(2, extra), 20, 2));
   return slots;
 }
 
@@ -216,7 +230,9 @@ function storyArcSlots(kpiCount: number): ArchetypeSlot[] {
     { type: 'chart', layout: { x: 0, y: 2, w: 12, h: 6 }, featured: true, prefer: ['area', 'line'] },
     { type: 'insight', layout: { x: 0, y: 8, w: 12, h: 2 }, role: 'strip' },
     ...kpiRow(Math.min(3, Math.max(1, kpiCount)), 10, 2),
-    { type: 'table', layout: { x: 0, y: 12, w: 12, h: 4 } },
+    { type: 'chart', layout: { x: 0, y: 12, w: 6, h: 5 }, prefer: ['bar'] },
+    { type: 'chart', layout: { x: 6, y: 12, w: 6, h: 5 }, prefer: ['donut', 'treemap'] },
+    { type: 'table', layout: { x: 0, y: 17, w: 12, h: 5 } },
   ];
 }
 
@@ -227,7 +243,12 @@ function splitSlots(kpiCount: number): ArchetypeSlot[] {
     { type: 'chart', layout: { x: 4, y: 0, w: 8, h: 4 }, featured: true, prefer: ['bar', 'area'] },
   ];
   slots.push(...kpiRow(n, 4, 2));
-  slots.push({ type: 'chart', layout: { x: 0, y: 6, w: 12, h: 5 }, prefer: ['line', 'bar'] });
+  slots.push(
+    { type: 'chart', layout: { x: 0, y: 6, w: 6, h: 5 }, prefer: ['line', 'bar'] },
+    { type: 'chart', layout: { x: 6, y: 6, w: 6, h: 5 }, prefer: ['donut', 'treemap'] },
+    { type: 'table', layout: { x: 0, y: 11, w: 12, h: 5 } },
+    { type: 'insight', layout: { x: 0, y: 16, w: 12, h: 2 }, role: 'strip' },
+  );
   return slots;
 }
 
@@ -238,6 +259,8 @@ function funnelSlots(kpiCount: number): ArchetypeSlot[] {
     { type: 'chart', layout: { x: 4, y: 6, w: 4, h: 5 }, prefer: ['donut'] },
     { type: 'chart', layout: { x: 8, y: 6, w: 4, h: 5 }, prefer: ['horizontal-bar'] },
     ...kpiRow(Math.min(3, Math.max(1, kpiCount)), 11, 2),
+    { type: 'table', layout: { x: 0, y: 13, w: 12, h: 5 } },
+    { type: 'insight', layout: { x: 0, y: 18, w: 12, h: 2 }, role: 'strip' },
   ];
 }
 

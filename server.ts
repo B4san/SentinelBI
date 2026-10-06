@@ -43,11 +43,8 @@ async function startServer() {
   }
 
   app.post('/api/dashboards/generate', async (req, res) => {
-    await generateDashboardHandler(req, res);
-    if (!res.headersSent) return;
-    if (req.body?.includeHtml && res.statusCode === 200) {
-      // body already sent as JSON without html; clients that need HTML use /render
-    }
+    const { renderDashboard } = await loadRenderer();
+    return generateDashboardHandler(req, res, renderDashboard);
   });
 
   app.post('/api/dashboards/render', async (req, res) => {
@@ -59,16 +56,14 @@ async function startServer() {
     try {
       const { renderDashboardDocument } = await loadRenderer();
       const stored = getStoredDashboard(req.params.id);
-      if (stored) {
-        const html = renderDashboardDocument(stored.spec, stored.datasets, prodAssets());
-        return res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
+      const payload = stored || sampleFromId(req.params.id);
+      if (!payload) return res.status(404).json({ error: 'Dashboard not found' });
+      const assets = isProd ? prodAssets() : { js: ['/src/entry-client-dashboard.tsx'] };
+      let html = renderDashboardDocument(payload.spec, payload.datasets, assets);
+      if (vite) {
+        html = await vite.transformIndexHtml(req.originalUrl, html);
       }
-      const sample = sampleFromId(req.params.id);
-      if (sample) {
-        const html = renderDashboardDocument(sample.spec, sample.datasets, prodAssets());
-        return res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
-      }
-      return res.status(404).json({ error: 'Dashboard not found' });
+      return res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
     } catch (error) {
       return res.status(500).json({ error: error instanceof Error ? error.message : 'SSR failed' });
     }
@@ -90,16 +85,17 @@ async function startServer() {
 }
 
 function sampleFromId(id: string) {
-  const match = id.match(/^sample-([a-z]+)-([a-z-]+)(?:-(light|dark))?$/);
   if (id === 'mocked-ai') {
     const space = createSampleSpace('sales');
     const datasets = toDashboardDatasets(space);
     return { spec: finalizeDashboardSpec(mockedAiSpec(datasets), datasets), datasets };
   }
+  const mode = /-(dark)$/.test(id) ? 'dark' as const : /-(light)$/.test(id) ? 'light' as const : 'light' as const;
+  const rest = id.replace(/-(light|dark)$/, '');
+  const match = rest.match(/^sample-([a-z]+)-([a-z-]+)$/);
   if (!match) return null;
   const kind = match[1] as SampleKind;
   const archetype = match[2] as LayoutArchetype;
-  const mode = (match[3] || 'light') as 'light' | 'dark';
   const space = createSampleSpace(kind);
   const datasets = toDashboardDatasets(space);
   const spec = buildFallbackDashboard({
@@ -114,11 +110,26 @@ function sampleFromId(id: string) {
 }
 
 function prodAssets(): { css?: string[]; js?: string[] } | undefined {
-  if (process.env.NODE_ENV !== 'production') return undefined;
   try {
+    const manifestPath = path.join(process.cwd(), 'dist/.vite/manifest.json');
+    if (fs.existsSync(manifestPath)) {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Record<string, { file: string; css?: string[]; imports?: string[] }>;
+      const entry = manifest['src/entry-client-dashboard.tsx'] || manifest['src/entry-client-dashboard.ts'];
+      const main = manifest['index.html'];
+      const css = new Set<string>();
+      const addCss = (item?: { css?: string[]; imports?: string[] }) => {
+        for (const href of item?.css || []) css.add(href.startsWith('/') ? href : `/${href}`);
+        for (const id of item?.imports || []) addCss(manifest[id]);
+      };
+      addCss(entry);
+      addCss(main);
+      const js = entry?.file ? [entry.file.startsWith('/') ? entry.file : `/${entry.file}`] : [];
+      if (js.length) return { css: [...css], js };
+    }
     const html = fs.readFileSync(path.join(process.cwd(), 'dist/index.html'), 'utf8');
     const css = [...html.matchAll(/href="([^"]+\.css)"/g)].map((m) => m[1]);
-    return { css, js: ['/src/entry-client-dashboard.tsx'] };
+    const js = [...html.matchAll(/src="([^"]+\.js)"/g)].map((m) => m[1]);
+    return { css, js };
   } catch {
     return undefined;
   }

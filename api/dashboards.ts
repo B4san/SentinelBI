@@ -1,8 +1,9 @@
 import type { Request, Response } from 'express';
+import { GenerationTimeoutError } from '../src/lib/ai/openaiCompatible';
 import { generateDashboardOnServer } from '../src/lib/dashboard/generate';
 import { validateDashboardSpec } from '../src/lib/dashboard/validate';
 import { finalizeDashboardSpec } from '../src/lib/dashboard/finalize';
-import { dashboardStore, rememberDashboard } from '../src/lib/dashboard/store';
+import { loadDashboard, rememberDashboard } from '../src/lib/dashboard/store';
 import type { DashboardDataset, DashboardSpec } from '../src/lib/dashboard/types';
 
 function readApiKey(req: Request): string {
@@ -25,7 +26,11 @@ function asDatasets(raw: unknown): DashboardDataset[] {
   });
 }
 
-export async function generateDashboardHandler(req: Request, res: Response) {
+export async function generateDashboardHandler(
+  req: Request,
+  res: Response,
+  render?: (spec: DashboardSpec, datasets: DashboardDataset[]) => Promise<string> | string,
+) {
   try {
     const datasets = asDatasets(req.body?.datasets);
     const result = await generateDashboardOnServer({
@@ -44,13 +49,21 @@ export async function generateDashboardHandler(req: Request, res: Response) {
       model: req.body?.model,
     }, process.env);
     rememberDashboard(result.spec.id, result.spec, datasets);
+    let html: string | undefined;
+    if (req.body?.includeHtml && render) {
+      html = await render(result.spec, datasets);
+    }
     return res.json({
       spec: result.spec,
       source: result.source,
       error: result.error,
-      html: req.body?.includeHtml ? undefined : undefined,
+      fallbackReason: result.fallbackReason,
+      html,
     });
   } catch (error) {
+    if (error instanceof GenerationTimeoutError) {
+      return res.status(504).json({ error: error.message, fallbackReason: error.message });
+    }
     return res.status(500).json({
       error: error instanceof Error ? error.message : 'Dashboard generation failed',
     });
@@ -76,5 +89,5 @@ export async function renderDashboardHandler(
 }
 
 export function getStoredDashboard(id: string) {
-  return dashboardStore.get(id);
+  return loadDashboard(id);
 }

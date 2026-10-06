@@ -20,9 +20,12 @@ import {
   type MeasureFormat,
   type Palette,
   type TableQuery,
+  type WidgetMeasure,
   type WidgetSeries,
   type WidgetType,
 } from './types';
+import { isDerivedMeasure, looksLikeCountTitle } from './ids';
+import { isDegenerateRatio } from './measures';
 
 const FONT_SET = new Set<string>(FONT_FAMILIES);
 const RADIUS_SET = new Set<string>(RADIUS_TOKENS);
@@ -106,18 +109,34 @@ export function shouldSwapAxes(xField?: string, yField?: string, chartType?: Cha
   return MEASURE_HINT.test(xField) && DIM_HINT.test(yField) && !MEASURE_HINT.test(yField);
 }
 
-function sanitizeMeasure(raw: unknown): DerivedMeasure | undefined {
+function sanitizeAgg(value: unknown, fallback: Aggregation = 'sum'): Aggregation {
+  const raw = asString(value);
+  return AGG_SET.has(raw) ? raw as Aggregation : fallback;
+}
+
+export function sanitizeMeasure(raw: unknown): WidgetMeasure | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const rec = raw as Record<string, unknown>;
   const kind = asString(rec.kind);
-  if (kind !== 'ratio' && kind !== 'difference' && kind !== 'margin') return undefined;
-  const num = rec.numerator && typeof rec.numerator === 'object' ? rec.numerator as Record<string, unknown> : null;
-  const den = rec.denominator && typeof rec.denominator === 'object' ? rec.denominator as Record<string, unknown> : null;
-  if (!num || !den || !asString(num.field) || !asString(den.field)) return undefined;
+  if (kind === 'ratio' || kind === 'difference' || kind === 'margin' || kind === 'weighted') {
+    const num = rec.numerator && typeof rec.numerator === 'object' ? rec.numerator as Record<string, unknown> : null;
+    const den = rec.denominator && typeof rec.denominator === 'object' ? rec.denominator as Record<string, unknown> : null;
+    if (!num || !den || !asString(num.field) || !asString(den.field)) return undefined;
+    const measure: DerivedMeasure = {
+      kind,
+      numerator: { field: asString(num.field), agg: sanitizeAgg(num.agg) },
+      denominator: { field: asString(den.field), agg: sanitizeAgg(den.agg) },
+      format: MEASURE_FORMATS.includes(asString(rec.format) as MeasureFormat) ? asString(rec.format) as MeasureFormat : undefined,
+    };
+    if (isDegenerateRatio(measure)) return undefined;
+    return measure;
+  }
+  const field = asString(rec.field);
+  if (!field) return undefined;
   return {
-    kind,
-    numerator: { field: asString(num.field), agg: AGG_SET.has(asString(num.agg)) ? asString(num.agg) as Aggregation : 'sum' },
-    denominator: { field: asString(den.field), agg: AGG_SET.has(asString(den.agg)) ? asString(den.agg) as Aggregation : 'sum' },
+    kind: 'simple',
+    field,
+    agg: sanitizeAgg(rec.agg || rec.aggregation),
     format: MEASURE_FORMATS.includes(asString(rec.format) as MeasureFormat) ? asString(rec.format) as MeasureFormat : undefined,
   };
 }
@@ -129,10 +148,11 @@ function sanitizeSeries(raw: unknown): WidgetSeries[] | undefined {
     .map((item) => ({
       field: asString(item.field),
       label: asString(item.label) || undefined,
-      style: (['line', 'bar', 'area', 'dashed'] as const).includes(asString(item.style) as 'line')
+      style: (['line', 'bar', 'area', 'dashed', 'target'] as const).includes(asString(item.style) as 'line')
         ? asString(item.style) as WidgetSeries['style']
         : undefined,
       color: isHexColor(asString(item.color)) ? asString(item.color) : undefined,
+      axis: (asString(item.axis) === 'right' ? 'right' : asString(item.axis) === 'left' ? 'left' : undefined) as WidgetSeries['axis'],
     }))
     .filter((item) => item.field);
   return series.length ? series : undefined;
@@ -145,7 +165,10 @@ function sanitizeTable(raw: unknown, title: string): TableQuery | undefined {
   const by = title.match(/by\s+([a-z0-9_ ]+)/i);
   const limit = Number(rec.limit) || (top ? Number(top[1]) : undefined);
   const field = sortField || (by ? by[1].trim().replace(/\s+/g, '_') : '');
-  const groupBy = Array.isArray(rec.groupBy) ? rec.groupBy.map((c) => String(c)) : undefined;
+  const inferredGroup = inferGroupByFromTitle(title);
+  const groupBy = Array.isArray(rec.groupBy) && rec.groupBy.length
+    ? rec.groupBy.map((c) => String(c))
+    : inferredGroup;
   const measures = Array.isArray(rec.measures)
     ? rec.measures
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
@@ -156,13 +179,35 @@ function sanitizeTable(raw: unknown, title: string): TableQuery | undefined {
       }))
       .filter((item) => item.field)
     : undefined;
-  if (!field && !limit && !groupBy && !measures) return undefined;
+  const inferredMeasure = title.match(/by\s+(revenue|sales|sessions|conversions|opex|ebitda|units)/i);
+  const nextMeasures = measures && measures.length
+    ? measures
+    : inferredMeasure
+      ? [{ field: inferredMeasure[1].toLowerCase(), agg: 'sum' as const }]
+      : undefined;
+  if (!field && !limit && !groupBy && !nextMeasures) return undefined;
   return {
     sort: field ? { field, dir: asString((rec.sort as { dir?: string } | undefined)?.dir) === 'asc' ? 'asc' : 'desc' } : undefined,
     limit,
     groupBy,
-    measures,
+    measures: nextMeasures,
   };
+}
+
+function inferGroupByFromTitle(title: string): string[] | undefined {
+  const cross = title.match(/([A-Za-z][A-Za-z0-9_ ]+)\s*[×x]\s*([A-Za-z][A-Za-z0-9_ ]+)/i);
+  if (cross) {
+    return [slugField(cross[1]), slugField(cross[2])].filter(Boolean);
+  }
+  const by = title.match(/\bby\s+([a-z0-9_ /&×x]+)/i);
+  if (by && !/revenue|sales|amount|session|conversion|opex|ebitda|unit/i.test(by[1])) {
+    return by[1].split(/[/,&]| and /i).map(slugField).filter(Boolean);
+  }
+  return undefined;
+}
+
+function slugField(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
 }
 
 function defaultLayoutFor(type: WidgetType, index: number): GridPosition {
@@ -188,9 +233,27 @@ export function sanitizeWidget(raw: unknown, index: number, palette: Palette): D
   }
   const kpiRec = rec.kpi && typeof rec.kpi === 'object' ? (rec.kpi as Record<string, unknown>) : undefined;
   const polarity = sanitizePolarity(rec.polarity || kpiRec?.polarity, asString(kpiRec?.field) || yField, title);
-  const measure = sanitizeMeasure(rec.measure);
+  let measure = sanitizeMeasure(rec.measure);
+  if (measure && !isDerivedMeasure(measure)) {
+    yField = yField || measure.field;
+    if (measure.agg) rec.aggregation = measure.agg;
+  }
+  if (isDerivedMeasure(measure) && isDegenerateRatio(measure)) measure = undefined;
+  const aggregationNext = measure && !isDerivedMeasure(measure) && measure.agg
+    ? measure.agg
+    : aggregation;
+  if (type === 'kpi' && (aggregationNext === 'count' || !yField && !measure && !kpiRec?.field) && !looksLikeCountTitle(title)) {
+    const hinted = title.match(/\b(revenue|ebitda|opex|units|sessions|conversions|headcount|dso)\b/i);
+    if (hinted) yField = yField || hinted[1].toLowerCase();
+  }
   const series = sanitizeSeries(rec.series);
   const table = sanitizeTable(rec.table, title);
+  const compareRaw = asString(rec.compare);
+  const compare = compareRaw === 'previous-year' || compareRaw === 'prior-year'
+    ? 'previous-year' as const
+    : compareRaw === 'previous-period' || compareRaw === 'prior-period'
+      ? 'previous-period' as const
+      : undefined;
 
   return {
     id: asString(rec.id, `w-${index + 1}`),
@@ -208,7 +271,7 @@ export function sanitizeWidget(raw: unknown, index: number, palette: Palette): D
     series,
     table,
     targetField: asString(rec.targetField) || undefined,
-    compare: rec.compare === 'previous-year' || rec.compare === 'previous-period' ? rec.compare : undefined,
+    compare,
     polarity,
     groupField: asString(rec.groupField) || undefined,
     sizeField: asString(rec.sizeField) || undefined,
@@ -219,7 +282,7 @@ export function sanitizeWidget(raw: unknown, index: number, palette: Palette): D
       : undefined,
     color: isHexColor(asString(rec.color)) ? asString(rec.color) : palette.chart[index % palette.chart.length],
     colors: Array.isArray(rec.colors) ? rec.colors.filter((c): c is string => typeof c === 'string' && isHexColor(c)) : undefined,
-    aggregation,
+    aggregation: aggregationNext,
     filter: sanitizeFilter(rec.filter) || sanitizeFilter({
       field: rec.filterField,
       op: rec.filterOp,
@@ -229,10 +292,10 @@ export function sanitizeWidget(raw: unknown, index: number, palette: Palette): D
       ? {
           value: asString((rec.kpi as Record<string, unknown>).value, '—'),
           trend: asString((rec.kpi as Record<string, unknown>).trend) || undefined,
-          field: asString((rec.kpi as Record<string, unknown>).field) || undefined,
+          field: asString((rec.kpi as Record<string, unknown>).field) || (!isDerivedMeasure(measure) ? measure?.field : undefined) || yField,
           aggregation: AGG_SET.has(asString((rec.kpi as Record<string, unknown>).aggregation))
             ? (asString((rec.kpi as Record<string, unknown>).aggregation) as Aggregation)
-            : undefined,
+            : (!isDerivedMeasure(measure) ? measure?.agg : undefined) || aggregationNext,
           format: MEASURE_FORMATS.includes(
             asString((rec.kpi as Record<string, unknown>).format) as MeasureFormat,
           )
@@ -407,21 +470,68 @@ export function validateDashboardSpec(raw: unknown, fallback?: Partial<Dashboard
   };
 }
 
-export function extractJsonObject(text: string): unknown {
+function scanBalancedObject(text: string, start: number): number {
+  let depth = 0;
+  let inStr = false;
+  let escape = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inStr) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') {
+      inStr = true;
+      continue;
+    }
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+export function extractJsonObjects(text: string): unknown[] {
   const cleaned = String(text || '')
     .replace(/```json\s*/gi, '')
     .replace(/```/g, '')
     .trim();
+  const found: unknown[] = [];
   try {
-    return JSON.parse(cleaned);
+    found.push(JSON.parse(cleaned));
   } catch {
-    const start = cleaned.indexOf('{');
-    const end = cleaned.lastIndexOf('}');
-    if (start >= 0 && end > start) {
-      return JSON.parse(cleaned.slice(start, end + 1));
-    }
-    throw new Error('Model did not return valid JSON.');
+    // scan below
   }
+  for (let i = 0; i < cleaned.length; i += 1) {
+    if (cleaned[i] !== '{') continue;
+    const end = scanBalancedObject(cleaned, i);
+    if (end < 0) continue;
+    try {
+      found.push(JSON.parse(cleaned.slice(i, end + 1)));
+    } catch {
+      // skip broken candidate
+    }
+    i = end;
+  }
+  return found;
+}
+
+export function extractJsonObject(text: string): unknown {
+  const candidates = extractJsonObjects(text);
+  if (candidates.length === 0) throw new Error('Model did not return valid JSON.');
+  const withWidgets = candidates.filter((item) => item && typeof item === 'object' && Array.isArray((item as { widgets?: unknown }).widgets));
+  const pool = withWidgets.length ? withWidgets : candidates;
+  return pool.sort((a, b) => JSON.stringify(b).length - JSON.stringify(a).length)[0];
 }
 
 export function applyThemeOverrides(

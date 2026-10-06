@@ -8,11 +8,19 @@ const measureRef = z.object({
 });
 
 export const derivedMeasureSchema = z.object({
-  kind: z.enum(['ratio', 'difference', 'margin']),
+  kind: z.enum(['ratio', 'difference', 'margin', 'weighted']),
   numerator: measureRef,
   denominator: measureRef,
   format: z.enum(MEASURE_FORMATS).optional(),
 });
+
+const simpleMeasureSchema = measureRef.extend({
+  kind: z.literal('simple').optional(),
+  aggregation: z.enum(['sum', 'avg', 'count', 'min', 'max']).optional(),
+  format: z.enum(MEASURE_FORMATS).optional(),
+});
+
+export const widgetMeasureSchema = z.union([derivedMeasureSchema, simpleMeasureSchema]);
 
 export const widgetSchema = z.object({
   id: z.string().optional(),
@@ -21,11 +29,12 @@ export const widgetSchema = z.object({
   componentId: z.string().optional(),
   xField: z.string().optional(),
   yField: z.string().optional(),
-  measure: derivedMeasureSchema.optional(),
+  measure: widgetMeasureSchema.optional(),
   series: z.array(z.object({
     field: z.string(),
     label: z.string().optional(),
-    style: z.enum(['line', 'bar', 'area', 'dashed']).optional(),
+    style: z.enum(['line', 'bar', 'area', 'dashed', 'target']).optional(),
+    axis: z.enum(['left', 'right']).optional(),
   })).optional(),
   table: z.object({
     sort: z.object({ field: z.string(), dir: z.enum(['asc', 'desc']) }).optional(),

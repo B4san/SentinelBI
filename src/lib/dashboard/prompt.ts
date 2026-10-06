@@ -96,20 +96,24 @@ ${principles}
 13. theme.palette.background must be "transparent". Cards use a surface that matches ${mode} mode.
 14. Keep titles short. NEVER emit filler / meta KPIs: rows loaded, number of channels, number of devices, unique counts of dimensions, “Active cohorts”. If there are only 2–3 real measures, draw 2–3 larger cards.
 15. polarity is required on every KPI: "higher-is-better" (revenue, conversions, sessions) or "lower-is-better" (bounce rate, churn, cost, CAC, latency, errors, refunds, attrition). The UI colors an increase red and a decrease green when polarity is lower-is-better.
-16. Do NOT invent KPI numbers, deltas, or claims. The server overwrites every number from the data. Use derived measures for ratios (ROAS, CVR, GM%, EBITDA margin). Sentence case titles. No eyebrows or repeated headlines.
-17. Pick a componentId from the catalog. Use series[] for multi-measure charts and table.sort/limit for ranked tables. Horizontal bars must put the dimension on xField and the measure on yField.
+16. Choose fields, aggregations, and derived measures. NEVER invent KPI numbers, deltas, or claims — the server computes every value from the rows. For a simple metric emit measure: { "field": "revenue", "agg": "sum", "format": "currency" }. For a ratio emit measure: { "kind": "ratio", "numerator": { "field": "revenue", "agg": "sum" }, "denominator": { "field": "units", "agg": "sum" }, "format": "currency" }. Sentence case titles. No eyebrows or repeated headlines.
+17. Pick componentId ONLY from the catalog below. Do not invent chartType names outside the catalog. Use series[] for multi-measure charts (style may be line|bar|area|dashed|target) and table.groupBy/sort/limit for ranked tables. Horizontal bars put the dimension on xField and the measure on yField.
 
-COMPONENT CATALOG:
+COMPONENT CATALOG (the only visual vocabulary):
 ${catalogPromptBlock()}
 
 DERIVED MEASURE CANDIDATES:
-${opts.datasets.map((ds) => proposeDerivedMeasures(ds).map((m) => `${m.title}: ${m.measure.kind} ${m.measure.numerator.field}/${m.measure.denominator.field}`).join(', ') || '(none)').join('\n')}
+${opts.datasets.map((ds) => proposeDerivedMeasures(ds).map((m) => m.measure ? `${m.title}: ${m.measure.kind} ${m.measure.numerator.field}/${m.measure.denominator.field}` : `${m.title}: avg ${m.field}`).join(', ') || '(none)').join('\n')}
 
 VARIETY RULES:
 - Mix widths (3,4,6,8,12). Do not clone a generic SaaS 4-up + 2-chart template unless the archetype is executive.
-- Choose chart types from: bar, horizontal-bar, line, stepped-line, area, pie, donut, scatter.
-- KPI values MUST come from the numeric summaries (currency when the field is money-like; percent when it is a rate).
+- 10–14 widgets: KPI rail, hero trend with compare, breakdown, composition (treemap or donut), ranking, table with groupBy, insight.
+- Unique titles. Subtitle must not repeat the title. Two widgets may not share the same measure+dimension+grain.
+- Donuts only for additive part-to-whole measures, ≤7 slices. Rate metrics use bars.
 - Quote or refine the computed findings; do not invent numbers that contradict the summaries.
+
+EXAMPLE SPEC for ${archetype} (compact, valid — vary fields for this dataset):
+${exampleSpec(archetype)}
 
 DATA:
 ${summarizeDatasets(opts.datasets)}
@@ -148,9 +152,9 @@ Return JSON with this exact shape:
       "yField": "exact column",
       "aggregation": "sum",
       "componentId": "arc.line-chart",
-      "measure": { "kind": "ratio", "numerator": { "field": "revenue", "agg": "sum" }, "denominator": { "field": "ad_spend", "agg": "sum" }, "format": "multiple" },
-      "series": [{ "field": "revenue", "style": "line" }, { "field": "ebitda", "style": "dashed" }],
-      "table": { "sort": { "field": "revenue", "dir": "desc" }, "limit": 15 },
+      "measure": { "field": "revenue", "agg": "sum", "format": "currency" },
+      "series": [{ "field": "revenue", "style": "line" }, { "field": "budget_opex", "style": "target" }],
+      "table": { "groupBy": ["region", "channel"], "sort": { "field": "revenue", "dir": "desc" }, "limit": 12 },
       "polarity": "higher-is-better",
       "color": "#2563eb",
       "kpi": { "value": "1,240", "trend": "+4.2% vs first half", "field": "exact column", "aggregation": "sum", "format": "number", "delta": 4.2, "sparkline": [1, 2, 3, 4], "polarity": "higher-is-better" },
@@ -160,4 +164,18 @@ Return JSON with this exact shape:
 }`;
 
   return { prompt, seed, archetype };
+}
+
+function exampleSpec(archetype: LayoutArchetype): string {
+  const examples: Record<LayoutArchetype, string> = {
+    'hero-kpi-rail': '{"title":"Executive revenue review","archetype":"hero-kpi-rail","widgets":[{"type":"kpi","title":"Total revenue","role":"hero","layout":{"x":0,"y":0,"w":6,"h":4},"measure":{"field":"revenue","agg":"sum","format":"currency"}},{"type":"chart","title":"Revenue trend","componentId":"arc.brush-chart","layout":{"x":0,"y":6,"w":12,"h":6},"xField":"order_date","yField":"revenue"}]}',
+    editorial: '{"title":"Editorial briefing","archetype":"editorial","widgets":[{"type":"section","title":"What changed","layout":{"x":0,"y":0,"w":12,"h":2}},{"type":"insight","role":"featured","layout":{"x":0,"y":2,"w":5,"h":2},"insight":{"text":"APAC generated 19% of revenue."}},{"type":"chart","title":"Revenue by region","componentId":"arc.bar-chart","layout":{"x":5,"y":2,"w":7,"h":6},"xField":"region","yField":"revenue"}]}',
+    'command-center': '{"title":"Analytical deep-dive","archetype":"command-center","widgets":[{"type":"chart","title":"Monthly revenue","role":"hero","componentId":"arc.line-chart","layout":{"x":0,"y":0,"w":8,"h":7},"xField":"order_date","yField":"revenue"},{"type":"kpi","title":"Total revenue","layout":{"x":8,"y":0,"w":4,"h":3},"measure":{"field":"revenue","agg":"sum","format":"currency"}}]}',
+    'story-arc': '{"title":"Story arc","archetype":"story-arc","widgets":[{"type":"section","title":"The walk","layout":{"x":0,"y":0,"w":12,"h":2}},{"type":"chart","componentId":"arc.brush-chart","layout":{"x":0,"y":2,"w":12,"h":6},"xField":"order_date","yField":"revenue"}]}',
+    'split-insight': '{"title":"Insight split","archetype":"split-insight","widgets":[{"type":"insight","role":"featured","layout":{"x":0,"y":0,"w":4,"h":4},"insight":{"text":"Partner share slipped."}},{"type":"chart","componentId":"arc.bar-chart","layout":{"x":4,"y":0,"w":8,"h":4},"xField":"channel","yField":"revenue"}]}',
+    'metric-mosaic': '{"title":"KPI wall","archetype":"metric-mosaic","widgets":[{"type":"kpi","role":"hero","layout":{"x":0,"y":0,"w":6,"h":3},"measure":{"field":"revenue","agg":"sum","format":"currency"}},{"type":"kpi","layout":{"x":6,"y":0,"w":6,"h":3},"measure":{"field":"units","agg":"sum","format":"number"}}]}',
+    comparison: '{"title":"Side-by-side","archetype":"comparison","widgets":[{"type":"kpi","role":"compare-a","layout":{"x":0,"y":0,"w":6,"h":3},"measure":{"field":"revenue","agg":"sum","format":"currency"}},{"type":"kpi","role":"compare-b","layout":{"x":6,"y":0,"w":6,"h":3},"measure":{"kind":"ratio","numerator":{"field":"revenue","agg":"sum"},"denominator":{"field":"units","agg":"sum"},"format":"currency"}}]}',
+    'funnel-flow': '{"title":"Flow review","archetype":"funnel-flow","widgets":[{"type":"chart","role":"hero","componentId":"arc.brush-chart","layout":{"x":0,"y":0,"w":12,"h":6},"xField":"date","yField":"sessions"},{"type":"chart","componentId":"arc.donut-chart","layout":{"x":0,"y":6,"w":4,"h":5},"xField":"channel","yField":"sessions"}]}',
+  };
+  return examples[archetype];
 }

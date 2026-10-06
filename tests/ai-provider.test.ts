@@ -22,16 +22,16 @@ describe('provider catalog', () => {
 });
 
 describe('resolveProviderConfig', () => {
-  it('prefers user overrides, then env, then provider defaults', () => {
+  it('lets the server env provider and key win over the client', () => {
     const resolved = resolveProviderConfig(
-      { provider: 'openrouter', baseUrl: 'https://example.test/v1/', model: 'my-model', apiKey: 'user-key' },
-      { AI_PROVIDER: 'openai', AI_BASE_URL: 'https://env.example/v1', AI_MODEL: 'env-model', OPENROUTER_API_KEY: 'env-key' },
+      { provider: 'gemini', baseUrl: 'https://example.test/v1/', model: 'my-model', apiKey: 'user-key' },
+      { AI_PROVIDER: 'openrouter', AI_BASE_URL: 'https://env.example/v1', AI_MODEL: 'env-model', OPENROUTER_API_KEY: 'env-key' },
     );
     expect(resolved.provider).toBe('openrouter');
-    expect(resolved.baseUrl).toBe('https://example.test/v1');
-    expect(resolved.model).toBe('my-model');
-    expect(resolved.apiKey).toBe('user-key');
-    expect(resolved.source.apiKey).toBe('user');
+    expect(resolved.baseUrl).toBe('https://env.example/v1');
+    expect(resolved.model).toBe('env-model');
+    expect(resolved.apiKey).toBe('env-key');
+    expect(resolved.source.apiKey).toBe('env');
     expect(resolved.extraHeaders['X-Title']).toBe('SentinelBI');
   });
 
