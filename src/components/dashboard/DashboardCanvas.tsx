@@ -238,10 +238,7 @@ export function DashboardCanvas({
               selected={selectedId === widget.id}
               onSelect={onSelect}
               onRegenerate={onRegenerateWidget}
-              onPointClick={(field, value) => {
-                addFilter(field, value);
-                drillInto(field, value);
-              }}
+              onPointClick={(field, value) => addFilter(field, value)}
             />
           </GridItem>
         ))}

@@ -17,9 +17,9 @@
   top: calc(100% + 8px);
   left: 0;
   z-index: 50;
-  width: 468px;
-  min-width: 468px;
-  max-width: min(468px, calc(100vw - 24px));
+  width: 496px;
+  min-width: 496px;
+  max-width: min(496px, calc(100vw - 24px));
   box-sizing: border-box;
   padding: 12px;
   border: 1px solid var(--border, #e2e8f0);
@@ -61,9 +61,25 @@
   cursor: pointer;
   color: inherit;
 }
-.calendars { display: flex; flex-direction: row; flex-wrap: nowrap; gap: 16px; align-items: flex-start; }
-.month { width: 210px; flex: 0 0 210px; min-width: 210px; display: flex; flex-direction: column; }
-.weekdays, .days { display: grid; grid-template-columns: repeat(7, minmax(26px, 1fr)); gap: 2px; }
+.calendars { display: flex; flex-direction: row; flex-wrap: nowrap; gap: 20px; align-items: flex-start; }
+.month {
+  width: 210px;
+  flex: 0 0 210px;
+  min-width: 210px;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 8px 4px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+}
+.monthLabel {
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  padding: 2px 0 8px;
+}
+.weekdays, .days { display: grid; grid-template-columns: repeat(7, minmax(24px, 1fr)); gap: 2px; }
 .weekdays span { text-align: center; font-size: 10px; opacity: 0.55; padding: 2px 0; }
 .days button {
   height: 26px;
@@ -88,4 +104,9 @@ html[data-theme='dark'] .panel,
 :root[data-theme='dark'] .panel {
   background: var(--surface, #111827);
   box-shadow: 0 16px 40px -20px rgba(0, 0, 0, 0.7);
+}
+html[data-theme='dark'] .month,
+:root[data-theme='dark'] .month {
+  background: var(--surface, #111827);
+  border-color: var(--border, #334155);
 }

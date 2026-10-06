@@ -223,7 +223,7 @@ function Cartesian({
           const bh = ((value - yMin) / (yMax - yMin || 1)) * innerH;
           const name = String(d.name || d[xKey]);
           return (
-            <g key={`bar-${i}`} onClick={() => onPointClick?.(xKey, name)}>
+            <g key={`bar-${i}`} onClick={() => onPointClick?.(xKey, name)} style={{ cursor: 'pointer' }}>
               <rect x={x} y={pad.top + innerH - bh} width={barW} height={Math.max(1, bh)} rx={4} fill={barColor(i, name)} />
             </g>
           );
@@ -269,7 +269,7 @@ function Cartesian({
           const y = pad.top + (innerH / n) * i + (innerH / n - barH) / 2;
           const bw = ((value - yMin) / (yMax - yMin || 1)) * innerW;
           return (
-            <g key={i} onClick={() => onPointClick?.(xKey, name)}>
+            <g key={i} onClick={() => onPointClick?.(xKey, name)} style={{ cursor: 'pointer' }}>
               <text x={pad.left - 8} y={y + barH / 2 + 4} textAnchor="end" fontSize="12" fill={palette.muted}>{labels[i]}</text>
               <rect x={pad.left} y={y} width={Math.max(1, bw)} height={barH} rx={4} fill={barColor(i, name)} />
               <text x={pad.left + bw + 6} y={y + barH / 2 + 4} fontSize="12" fill={palette.text}>{formatMetric(value, fmt)}</text>
@@ -280,7 +280,7 @@ function Cartesian({
         const x = pad.left + step * i + (step - barW) / 2;
         const bh = ((value - yMin) / (yMax - yMin || 1)) * innerH;
         return (
-          <g key={i} onClick={() => onPointClick?.(xKey, name)}>
+          <g key={i} onClick={() => onPointClick?.(xKey, name)} style={{ cursor: 'pointer' }}>
             <rect x={x} y={pad.top + innerH - bh} width={barW} height={Math.max(1, bh)} rx={4} fill={barColor(i, name)} />
             {n <= 8 && (
               <text x={x + barW / 2} y={pad.top + innerH - bh - 6} textAnchor="middle" fontSize="11" fill={palette.text}>{formatMetric(value, fmt)}</text>

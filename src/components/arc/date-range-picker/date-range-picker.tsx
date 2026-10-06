@@ -169,6 +169,9 @@ export function DateRangePicker({
           <div className={styles.calendars}>
             {months.map((month) => (
               <div key={`${month.getFullYear()}-${month.getMonth()}`} className={styles.month}>
+                <div className={styles.monthLabel}>
+                  {month.toLocaleString('en', { month: 'long', year: 'numeric' })}
+                </div>
                 <div className={styles.weekdays}>
                   {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => <span key={`${d}-${i}`}>{d}</span>)}
                 </div>

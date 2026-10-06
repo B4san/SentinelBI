@@ -21,16 +21,12 @@ test('hydrated /d page styles, slicer, cross-filter, and compare', async ({ page
   const before = await firstKpi.textContent();
   const slicer = page.locator('.dash-toolbar button').filter({ hasText: /North|South|EMEA|APAC|LATAM|Direct|Partner/ }).first();
   if (await slicer.count()) await slicer.click();
-  const plot = page.locator('.dash-plot').first();
-  if (await plot.count()) {
-    const bar = page.locator('.dash-plot rect').first();
-    if (await bar.count()) await bar.click();
-    else await plot.click({ position: { x: 80, y: 80 } });
-  }
+  const candidate = page.locator('.dash-plot').nth(2).locator('rect').first();
+  if (await candidate.count()) await candidate.click();
+  else await page.locator('.dash-plot rect').first().click();
   const chips = page.locator('.dash-toolbar button').filter({ hasText: /=/ });
-  if (await chips.count()) {
-    expect(await chips.count()).toBeLessThanOrEqual(2);
-  }
+  await expect(chips).toHaveCount(1);
+  await expect(chips.first()).toHaveText(/\w+ = .+/);
   const afterFilter = await firstKpi.textContent();
   expect(afterFilter).toBeTruthy();
   expect(afterFilter).not.toMatch(/^\$0|0\.0%$/);
