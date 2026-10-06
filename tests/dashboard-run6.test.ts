@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { generateDashboardHandler } from '../api/dashboards';
+import { generateDashboardHandler } from '../src/server/handlers/dashboards';
 import { clearStructuredOutputCache, openaiGenerate } from '../src/lib/ai/openaiCompatible';
 import { prepareChartSeries } from '../src/lib/dashboard/aggregate';
 import { rangeForPreset } from '../src/components/arc/date-range-picker/date-range-picker';

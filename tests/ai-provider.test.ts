@@ -22,7 +22,7 @@ describe('provider catalog', () => {
 });
 
 describe('resolveProviderConfig', () => {
-  it('lets the server env provider and key win over the client', () => {
+  it('lets a request API key win over the server env key (BYOK)', () => {
     const resolved = resolveProviderConfig(
       { provider: 'gemini', baseUrl: 'https://example.test/v1/', model: 'my-model', apiKey: 'user-key' },
       { AI_PROVIDER: 'openrouter', AI_BASE_URL: 'https://env.example/v1', AI_MODEL: 'env-model', OPENROUTER_API_KEY: 'env-key' },
@@ -30,8 +30,8 @@ describe('resolveProviderConfig', () => {
     expect(resolved.provider).toBe('openrouter');
     expect(resolved.baseUrl).toBe('https://env.example/v1');
     expect(resolved.model).toBe('env-model');
-    expect(resolved.apiKey).toBe('env-key');
-    expect(resolved.source.apiKey).toBe('env');
+    expect(resolved.apiKey).toBe('user-key');
+    expect(resolved.source.apiKey).toBe('user');
     expect(resolved.extraHeaders['X-Title']).toBe('SentinelBI');
   });
 
@@ -124,8 +124,11 @@ describe('openai-compatible request builders', () => {
 
 describe('error mapping', () => {
   it('maps auth, rate limit, and network failures', () => {
-    expect(mapProviderError({ status: 401, provider: 'openai' }).code).toBe('auth');
+    expect(mapProviderError({ status: 401, provider: 'openai' }).message).toMatch(/invalid API key for openai/);
     expect(mapProviderError({ status: 429, provider: 'groq' }).retryable).toBe(true);
+    expect(mapProviderError({ status: 429, body: 'free-models-per-day', provider: 'openrouter' }).message).toMatch(/free quota exhausted/);
+    expect(mapProviderError({ status: 402, provider: 'openai' }).code).toBe('payment');
+    expect(mapProviderError({ status: 504, provider: 'openrouter' }).code).toBe('timeout');
     expect(mapProviderError({ status: 0, body: 'fetch failed', provider: 'ollama' }).code).toBe('network');
     expect(mapProviderError({ status: 500, provider: 'together' })).toBeInstanceOf(AIProviderError);
   });

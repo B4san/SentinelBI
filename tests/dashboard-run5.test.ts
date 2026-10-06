@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { chatPayloadError, extractChatText, openaiGenerate } from '../src/lib/ai/openaiCompatible';
-import { generateDashboardHandler } from '../api/dashboards';
+import { generateDashboardHandler } from '../src/server/handlers/dashboards';
 import { generateDashboardOnServer } from '../src/lib/dashboard/generate';
 import { attachComputedFacts, computeWidgetKpi } from '../src/lib/dashboard/facts';
 import { buildFallbackDashboard } from '../src/lib/dashboard/fallback';

@@ -75,7 +75,7 @@ export function resolveProviderConfig(
 
   const userKey = String(input.apiKey || '').trim();
   const envKey = envApiKey(env, provider);
-  const apiKey = envKey || userKey;
+  const apiKey = userKey || envKey;
 
   return {
     provider,
@@ -88,7 +88,7 @@ export function resolveProviderConfig(
     source: {
       baseUrl: envBase ? 'env' : userBase ? 'user' : 'provider',
       model: envModel ? 'env' : userModel ? 'user' : 'provider',
-      apiKey: envKey ? 'env' : userKey ? 'user' : 'none',
+      apiKey: userKey ? 'user' : envKey ? 'env' : 'none',
     },
   };
 }

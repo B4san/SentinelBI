@@ -15,7 +15,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const stored = loadAiSettings();
-    setAiSettings(stored);
+    const current = useStore.getState().aiSettings;
+    if (!current?.apiKey && stored.apiKey) {
+      setAiSettings({ ...current, ...stored });
+    } else {
+      saveAiSettings(current);
+    }
   }, [setAiSettings]);
 
   const aiSettings = useStore((s) => s.aiSettings);

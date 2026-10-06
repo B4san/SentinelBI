@@ -1,208 +1,234 @@
-import React, { useCallback, useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-import { 
-  ReactFlow, 
-  Controls, 
-  Background, 
-  applyNodeChanges, 
-  applyEdgeChanges,
-  Node,
-  Edge,
-  NodeChange,
-  EdgeChange,
-  Connection,
-  addEdge,
-  Panel
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import {
+  ReactFlow,
+  Controls,
+  Background,
+  MiniMap,
+  Panel,
+  type Node,
+  type Edge,
+  type NodeChange,
+  applyNodeChanges,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useStore } from '../store';
-import { Badge } from '../components/ui/badge';
-import { BrainCircuit, Database, Shield, CheckCircle2, AlertTriangle, Eye, ArrowRightLeft, Save } from 'lucide-react';
-import { Card } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import { HonestEmpty } from '../components/HonestEmpty';
+import { Save, Upload, X } from 'lucide-react';
+import {
+  buildTopology,
+  layoutTopology,
+  type TopologyHealth,
+  type TopologyNodeKind,
+  type TopologyNodeModel,
+  type TopologyStatus,
+} from '../lib/topology/buildTopology';
 
-const baseNodeStyle = { background: '#ffffff', color: '#111827', border: 'none', borderRadius: '12px', padding: '12px 16px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05)', fontSize: '13px', fontWeight: 600 };
+const STATUS_COLOR: Record<TopologyStatus, { light: string; dark: string }> = {
+  ok: { light: '#059669', dark: '#34d399' },
+  fallback: { light: '#d97706', dark: '#fbbf24' },
+  error: { light: '#e11d48', dark: '#fb7185' },
+  idle: { light: '#64748b', dark: '#94a3b8' },
+  running: { light: '#2563eb', dark: '#60a5fa' },
+};
 
-const initialNodesTemplate: Node[] = [
-  {
-    id: 'intake',
-    type: 'input',
-    position: { x: 50, y: 300 },
-    data: { label: 'Intake Agent' },
-    style: { ...baseNodeStyle, borderLeft: '4px solid #3b82f6' }
-  },
-  {
-    id: 'sec',
-    position: { x: 250, y: 150 },
-    data: { label: 'Security Agent' },
-    style: { ...baseNodeStyle, borderLeft: '4px solid #ef4444' }
-  },
-  {
-    id: 'gov',
-    position: { x: 450, y: 50 },
-    data: { label: 'Governance Agent' },
-    style: { ...baseNodeStyle, borderLeft: '4px solid #eab308' }
-  },
-  {
-    id: 'schema',
-    position: { x: 250, y: 300 },
-    data: { label: 'Schema Agent' },
-    style: { ...baseNodeStyle, borderLeft: '4px solid #64748b' }
-  },
-  {
-    id: 'quality',
-    position: { x: 450, y: 300 },
-    data: { label: 'Data Quality Agent' },
-    style: { ...baseNodeStyle, borderLeft: '4px solid #64748b' }
-  },
-  {
-    id: 'orch',
-    position: { x: 650, y: 300 },
-    data: { label: 'Orchestrator Agent' },
-    style: { ...baseNodeStyle, borderLeft: '4px solid #8b5cf6', background: '#f5f3ff', color: '#6d28d9' }
-  },
-  {
-    id: 'analytics',
-    position: { x: 850, y: 200 },
-    data: { label: 'Analytics Agent' },
-    style: { ...baseNodeStyle, borderLeft: '4px solid #14b8a6' }
-  },
-  {
-    id: 'forecast',
-    position: { x: 850, y: 300 },
-    data: { label: 'Forecasting Agent' },
-    style: { ...baseNodeStyle, borderLeft: '4px solid #3b82f6' }
-  },
-  {
-    id: 'visual',
-    position: { x: 850, y: 400 },
-    data: { label: 'Visual Code Agent' },
-    style: { ...baseNodeStyle, borderLeft: '4px solid #ec4899' }
-  },
-  {
-    id: 'explain',
-    type: 'output',
-    position: { x: 1100, y: 300 },
-    data: { label: 'Explainability Agent' },
-    style: { ...baseNodeStyle, borderLeft: '4px solid #10b981' }
-  },
-  {
-    id: 'export',
-    type: 'output',
-    position: { x: 1100, y: 400 },
-    data: { label: 'Export Agent' },
-    style: { ...baseNodeStyle, borderLeft: '4px solid #f59e0b' }
-  }
-];
+function statusColor(status: TopologyStatus, mode: 'light' | 'dark') {
+  return STATUS_COLOR[status][mode];
+}
 
-const initialEdgesTemplate: Edge[] = [
-  { id: 'e1', source: 'intake', target: 'sec', animated: true, label: 'Inspect', style: { stroke: '#94a3b8' } },
-  { id: 'e2', source: 'sec', target: 'gov', animated: true, style: { stroke: '#94a3b8' } },
-  { id: 'e3', source: 'intake', target: 'schema', animated: true, style: { stroke: '#94a3b8' } },
-  { id: 'e4', source: 'schema', target: 'quality', animated: true, style: { stroke: '#94a3b8' } },
-  { id: 'e5', source: 'quality', target: 'orch', animated: true, style: { stroke: '#94a3b8' } },
-  { id: 'e6', source: 'sec', target: 'orch', animated: true, label: 'Safe Pass', style: { stroke: '#94a3b8' } },
-  { id: 'e7', source: 'gov', target: 'orch', animated: true, label: 'Policy Apply', style: { stroke: '#94a3b8' } },
-  { id: 'e8', source: 'orch', target: 'analytics', animated: true, style: { stroke: '#94a3b8' } },
-  { id: 'e9', source: 'orch', target: 'forecast', animated: true, style: { stroke: '#94a3b8' } },
-  { id: 'e10', source: 'orch', target: 'visual', animated: true, style: { stroke: '#94a3b8' } },
-  { id: 'e11', source: 'analytics', target: 'explain', animated: true, style: { stroke: '#94a3b8' } },
-  { id: 'e12', source: 'forecast', target: 'explain', animated: true, style: { stroke: '#94a3b8' } },
-  { id: 'e13', source: 'visual', target: 'explain', animated: true, style: { stroke: '#94a3b8' } },
-  { id: 'e14', source: 'explain', target: 'export', animated: true, style: { stroke: '#94a3b8' } },
-  { id: 'e15', source: 'visual', target: 'export', animated: true, style: { stroke: '#94a3b8' } }
-];
+const KIND_LABEL: Record<TopologyNodeKind, string> = {
+  source: 'Source',
+  dataset: 'Dataset',
+  ai: 'AI',
+  step: 'Generation step',
+  fallback: 'Fallback',
+  dashboard: 'Dashboard',
+  chat: 'Chat',
+  export: 'Export',
+};
+
+function flowNodes(models: TopologyNodeModel[]): Node[] {
+  return models.map((node) => ({
+    id: node.id,
+    position: node.position || { x: 0, y: 0 },
+    data: { model: node },
+    type: 'lineage',
+  }));
+}
+
+function flowEdges(graphEdges: ReturnType<typeof buildTopology>['edges'], mode: 'light' | 'dark'): Edge[] {
+  return graphEdges.map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    label: edge.label,
+    animated: edge.animated || edge.status === 'running',
+    style: { stroke: statusColor(edge.status, mode), strokeWidth: 2.5 },
+    labelStyle: { fill: mode === 'dark' ? '#e8eef7' : '#0f172a', fontSize: 11, fontWeight: 600 },
+    labelBgStyle: { fill: mode === 'dark' ? '#141c2e' : '#ffffff' },
+  }));
+}
+
+function LineageNode({ data }: { data: { model: TopologyNodeModel } }) {
+  const node = data.model;
+  const bar =
+    node.status === 'ok' ? 'var(--success)'
+    : node.status === 'fallback' ? 'var(--warning)'
+    : node.status === 'error' ? 'var(--danger)'
+    : node.status === 'running' ? 'var(--nav-marker)'
+    : 'var(--muted-foreground)';
+  return (
+    <div
+      className="rounded-xl border px-3 py-2 min-w-[160px] max-w-[220px] shadow-sm"
+      style={{
+        background: 'var(--card)',
+        color: 'var(--card-foreground)',
+        borderColor: 'var(--border)',
+        borderLeft: `4px solid ${bar}`,
+      }}
+    >
+      <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--foreground)]">{KIND_LABEL[node.kind]}</p>
+      <p className="text-[13px] font-semibold leading-snug mt-0.5 break-words">{node.label}</p>
+      {node.subtitle && <p className="text-[11px] font-medium text-[var(--foreground)] mt-1 break-words">{node.subtitle}</p>}
+    </div>
+  );
+}
+
+const nodeTypes = { lineage: LineageNode };
 
 export function TopologyLab() {
   const { spaceId } = useParams();
-  const spaces = useStore(state => state.spaces);
-  const saveTopology = useStore(state => state.saveTopology);
-  const activeSpace = spaces.find(s => s.id === spaceId);
+  const navigate = useNavigate();
+  const spaces = useStore((state) => state.spaces);
+  const aiSettings = useStore((state) => state.aiSettings);
+  const appearance = useStore((state) => state.appearance);
+  const saveTopologyLayout = useStore((state) => state.saveTopologyLayout);
+  const activeSpace = spaces.find((s) => s.id === spaceId);
+  const [health, setHealth] = useState<TopologyHealth | null>(null);
+  const [selected, setSelected] = useState<TopologyNodeModel | null>(null);
+  const [nodes, setNodes] = useState<Node[]>([]);
+  const [edges, setEdges] = useState<Edge[]>([]);
 
-  const initialNodes = activeSpace?.topologyNodes?.length ? activeSpace.topologyNodes : initialNodesTemplate;
-  const initialEdges = activeSpace?.topologyEdges?.length ? activeSpace.topologyEdges : initialEdgesTemplate;
-
-  const [nodes, setNodes] = useState<Node[]>(initialNodes);
-  const [edges, setEdges] = useState<Edge[]>(initialEdges);
-
-  // Sync state if space changes
   useEffect(() => {
-     setNodes(initialNodes);
-     setEdges(initialEdges);
-  }, [spaceId]);
+    fetch('/api/health')
+      .then((res) => res.json())
+      .then(setHealth)
+      .catch(() => setHealth({ ok: false }));
+  }, []);
 
-  const onNodesChange = useCallback(
-    (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
-    [setNodes]
+  const graph = useMemo(
+    () => (activeSpace
+      ? layoutTopology(
+          buildTopology(activeSpace, aiSettings, health, { inFlight: activeSpace.executionState === 'running' }),
+          activeSpace.topologyLayout,
+        )
+      : { nodes: [], edges: [], empty: true }),
+    [activeSpace, aiSettings, health],
   );
-  
-  const onEdgesChange = useCallback(
-    (changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)),
-    [setEdges]
-  );
-  
-  const onConnect = useCallback(
-    (connection: Connection) => setEdges((eds) => addEdge({ ...connection, animated: true, style: { stroke: '#94a3b8' } }, eds)),
-    [setEdges]
-  );
+
+  useEffect(() => {
+    setNodes(flowNodes(graph.nodes));
+    setEdges(flowEdges(graph.edges, appearance.mode));
+    setSelected(null);
+  }, [graph, appearance.mode]);
+
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
+    setNodes((current) => applyNodeChanges(changes, current));
+  }, []);
 
   const handleSave = () => {
-    if (spaceId) {
-      saveTopology(spaceId, nodes, edges);
-    }
+    if (!spaceId) return;
+    const layout: Record<string, { x: number; y: number }> = {};
+    nodes.forEach((node) => {
+      layout[node.id] = node.position;
+    });
+    saveTopologyLayout(spaceId, layout);
   };
 
+  if (!activeSpace) return null;
+
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] animate-in fade-in duration-500">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8">
+    <div className="flex flex-col h-[calc(100vh-8rem)] min-h-0">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
         <div>
-           <h2 className="text-[28px] font-bold tracking-tight text-gray-900">Agent Topology Lab</h2>
-           <p className="text-gray-500 mt-1 font-medium text-[15px]">Visually manage multi-agent communication and secure execution zones for this workspace.</p>
+          <h2 className="page-title">Pipeline topology</h2>
+          <p className="page-subtitle mt-1">Lineage from this workspace’s files, datasets, provider, and generated boards.</p>
         </div>
-        <div className="flex items-center space-x-3 mt-4 sm:mt-0">
-           <Badge variant="outline" className="bg-white px-3 py-1.5 shadow-sm text-gray-700 font-semibold border-gray-200">
-             <BrainCircuit className="w-3.5 h-3.5 mr-1.5 text-blue-500"/> {nodes.length} Active Models
-           </Badge>
-           <Badge variant="outline" className="bg-emerald-50 text-emerald-600 px-3 py-1.5 shadow-sm font-semibold border-emerald-100">
-             Execution Flow Active
-           </Badge>
-           <Button variant="default" size="sm" onClick={handleSave} className="shadow-md ml-2">
-              <Save className="w-4 h-4 mr-2" /> Save Architecture
-           </Button>
+        <div className="flex items-center gap-2">
+          {!graph.empty && (
+            <span className="text-sm font-medium text-[var(--foreground)]">
+              {graph.nodes.length} nodes · {graph.edges.filter((e) => e.status === 'ok').length} healthy edges
+            </span>
+          )}
+          <Button variant="outline" onClick={handleSave} disabled={graph.empty}>
+            <Save className="w-4 h-4 mr-2" /> Save layout
+          </Button>
         </div>
       </div>
 
-      <Card className="flex-1 w-full relative overflow-hidden border-none soft-shadow bg-gray-50/50 rounded-3xl">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          fitView
-          colorMode="light"
-        >
-          <Background color="#cbd5e1" gap={16} size={2} />
-          <Controls className="bg-white shadow-md border-gray-100 fill-gray-700" />
-          <Panel position="top-right" className="bg-white/90 backdrop-blur-md p-5 rounded-2xl border border-gray-100 shadow-xl max-w-sm mt-4 mr-4">
-            <h3 className="font-bold text-gray-900 mb-3 text-[15px]">Topology Security Guardrails</h3>
-            <ul className="text-sm space-y-3 text-gray-600 font-medium">
-                <li className="flex items-start leading-relaxed">
-                  <div className="p-1 rounded bg-rose-50 mr-3 mt-0.5">
-                    <Shield className="w-4 h-4 text-rose-500 shrink-0" />
+      {graph.empty ? (
+        <div className="flex-1 surface-card rounded-3xl grid place-items-center">
+          <HonestEmpty
+            title="Upload a CSV to see your pipeline"
+            description="Sources, datasets, the configured model, and generated dashboards appear here once this space has data."
+            action={
+              <Button onClick={() => navigate(`/space/${spaceId}/data`)}><Upload className="w-4 h-4 mr-2" /> Data Sources</Button>
+            }
+          />
+        </div>
+      ) : (
+        <div className="flex-1 w-full relative overflow-hidden rounded-3xl border border-[var(--border)] bg-[var(--card)]">
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onNodeClick={(_e, node) => setSelected((node.data as { model: TopologyNodeModel }).model)}
+            nodeTypes={nodeTypes}
+            fitView
+            colorMode={appearance.mode}
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background color="var(--border)" gap={18} size={1} />
+            <Controls />
+            <MiniMap
+              pannable
+              zoomable
+              style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
+              nodeColor={() => 'var(--nav-marker)'}
+            />
+            {selected && (
+              <Panel position="top-right" className="max-w-sm">
+                <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4 shadow-lg text-[var(--card-foreground)]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-[var(--muted-foreground)]">{KIND_LABEL[selected.kind]}</p>
+                      <h3 className="font-semibold mt-1">{selected.label}</h3>
+                    </div>
+                    <button type="button" onClick={() => setSelected(null)} className="text-[var(--muted-foreground)]">
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                  All user inputs MUST traverse the Security Agent (Lobster Trap) before Orchestrator.
-                </li>
-                <li className="flex items-start leading-relaxed">
-                  <div className="p-1 rounded bg-amber-50 mr-3 mt-0.5">
-                    <Eye className="w-4 h-4 text-amber-500 shrink-0" />
-                  </div>
-                  Governance Agent monitors orchestration routing.
-                </li>
-            </ul>
-          </Panel>
-        </ReactFlow>
-      </Card>
+                  {selected.subtitle && <p className="text-sm text-[var(--muted-foreground)] mt-2">{selected.subtitle}</p>}
+                  <dl className="mt-3 space-y-1 text-sm">
+                    {Object.entries(selected.detail || {}).filter(([, v]) => v != null && v !== '').map(([key, value]) => (
+                      <div key={key} className="flex justify-between gap-3">
+                        <dt className="text-[var(--muted-foreground)]">{key}</dt>
+                        <dd className="text-right break-all">{String(value)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  {selected.kind === 'dashboard' && (
+                    <Button size="sm" className="mt-3" onClick={() => navigate(`/space/${spaceId}/visuals`)}>
+                      Open dashboard
+                    </Button>
+                  )}
+                </div>
+              </Panel>
+            )}
+          </ReactFlow>
+        </div>
+      )}
     </div>
   );
 }

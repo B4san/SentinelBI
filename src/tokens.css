@@ -1,5 +1,6 @@
 /* App + Arc shared tokens. Unlayered so they win over Arc foundation.css. */
 :root,
+:root[data-theme="light"],
 [data-theme="light"] {
   --background: #f4f7fb;
   --foreground: #0f172a;
@@ -7,12 +8,12 @@
   --card-foreground: #0f172a;
   --popover: #ffffff;
   --popover-foreground: #0f172a;
-  --primary: #2563eb;
+  --primary: #1e40af;
   --primary-foreground: #ffffff;
   --secondary: #eef2f7;
   --secondary-foreground: #334155;
   --muted: #f1f5f9;
-  --muted-foreground: #64748b;
+  --muted-foreground: #334155;
   --accent: #2563eb;
   --accent-foreground: #ffffff;
   --destructive: #ef4444;
@@ -24,12 +25,16 @@
   --sidebar: #ffffff;
   --header: rgba(244, 247, 251, 0.86);
   --surface: #ffffff;
-  --text-secondary: #64748b;
+  --surface-muted: #eef2f7;
+  --text-secondary: #334155;
+  --text-muted: #475569;
   --success: #059669;
   --warning: #d97706;
   --danger: #e11d48;
 }
 
+:root.dark,
+:root[data-theme="dark"],
 .dark,
 [data-theme="dark"] {
   color-scheme: dark;
@@ -39,12 +44,12 @@
   --card-foreground: #e8eef7;
   --popover: #141c2e;
   --popover-foreground: #e8eef7;
-  --primary: #60a5fa;
-  --primary-foreground: #0b1220;
+  --primary: #1e40af;
+  --primary-foreground: #ffffff;
   --secondary: #1b2438;
-  --secondary-foreground: #cbd5e1;
+  --secondary-foreground: #e8eef7;
   --muted: #172033;
-  --muted-foreground: #94a3b8;
+  --muted-foreground: #e2e8f0;
   --accent: #60a5fa;
   --accent-foreground: #0b1220;
   --destructive: #fb7185;
@@ -55,7 +60,9 @@
   --sidebar: #10182a;
   --header: rgba(11, 18, 32, 0.82);
   --surface: #141c2e;
-  --text-secondary: #94a3b8;
+  --surface-muted: #1b2438;
+  --text-secondary: #e2e8f0;
+  --text-muted: #cbd5e1;
   --success: #34d399;
   --warning: #fbbf24;
   --danger: #fb7185;
