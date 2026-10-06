@@ -408,7 +408,7 @@ function xTicks(
     const label = prettyTick(String(d.label || d.name || ''));
     if (placed.length) {
       const prev = placed[placed.length - 1];
-      const minGap = Math.max(40, label.length * 4.2);
+      const minGap = i === data.length - 1 ? Math.max(64, label.length * 6.5) : Math.max(40, label.length * 4.2);
       if (x - prev < minGap) return null;
     }
     placed.push(x);

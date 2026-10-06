@@ -400,7 +400,7 @@ export function buildFactSentences(datasets: DashboardDataset[], spec: Dashboard
   for (const kpi of kpis) {
     const stats = computeWidgetKpi(datasets, kpi);
     if (Number.isFinite(stats.raw) && stats.value !== '—') {
-      const delta = stats.delta == null ? '' : ` (${formatDeltaLabel(stats.delta, { rate: stats.format === 'percent', polarity: stats.polarity }).label} vs first half)`;
+      const delta = stats.trend ? ` (${stats.trend})` : '';
       sentences.push(`${kpi.title} is ${stats.value}${delta}.`);
     }
   }

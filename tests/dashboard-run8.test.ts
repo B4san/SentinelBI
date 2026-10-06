@@ -96,6 +96,7 @@ describe('weighted table rates', () => {
     const kpi = spec.widgets.find((w) => /gross margin/i.test(w.title));
     expect(kpi?.kpi?.value).toMatch(/27\.\d%/);
     expect(String(model.rows[model.rows.length - 1].gross_margin)).toMatch(/27\.\d%/);
+    expect(String(model.rows[model.rows.length - 1].revenue)).toMatch(/\$\d+(\.\d+)?[MB]/);
   });
 });
 

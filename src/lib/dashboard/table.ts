@@ -107,11 +107,12 @@ export function prepareTableModel(
 
 function derivedForField(dataset: DashboardDataset | undefined, field: string): DerivedMeasure | undefined {
   if (!dataset) return undefined;
+  if (!/rate|margin|bounce|pct|percent/i.test(field)) return undefined;
   const match = proposeDerivedMeasures(dataset).find((item) => (
     item.measure
     && isDerivedMeasure(item.measure)
+    && item.measure.kind === 'weighted'
     && item.measure.numerator.field === field
-    && (item.measure.kind === 'weighted' || item.measure.kind === 'ratio' || item.measure.kind === 'margin')
   ));
   return match?.measure;
 }
