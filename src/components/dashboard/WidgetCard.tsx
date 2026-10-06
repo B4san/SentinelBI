@@ -38,8 +38,8 @@ export function WidgetCard({
       <header className="flex items-start justify-between gap-3 px-5 pt-4 pb-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            {editing && <GripVertical className="w-4 h-4 shrink-0 opacity-40 drag-handle cursor-grab" />}
-            <h3 className={`truncate ${spec.theme.headingFont || spec.theme.fontFamily} font-semibold`}>
+            {editing && <GripVertical className="w-4 h-4 shrink-0 opacity-40 drag-handle cursor-grab" data-drag-handle="true" />}
+            <h3 className={`${spec.theme.headingFont || spec.theme.fontFamily} font-semibold leading-snug`}>
               {widget.title}
             </h3>
           </div>

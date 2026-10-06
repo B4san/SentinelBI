@@ -1,4 +1,5 @@
-import { generateContent } from '../ai/client';
+import { generateContent, loadAiSettings } from '../ai/client';
+import { PROVIDERS } from '../ai/providers';
 import { buildFallbackDashboard, varyWidget, type GenerateDashboardContext } from './fallback';
 import { buildDashboardPrompt } from './prompt';
 import { extractJsonObject, validateDashboardSpec } from './validate';
@@ -17,6 +18,24 @@ export async function generateDashboardSpec(
     widgetId: ctx.widgetId,
     instruction: ctx.instruction,
   });
+
+  const settings = loadAiSettings();
+  const def = PROVIDERS[settings.provider];
+  if (def.requiresApiKey && !settings.apiKey) {
+    const fallback = ctx.widgetId && ctx.existing
+      ? {
+          ...ctx.existing,
+          widgets: ctx.existing.widgets.map((w) =>
+            w.id === ctx.widgetId ? varyWidget(w, ctx.datasets, seed) : w,
+          ),
+        }
+      : buildFallbackDashboard({ ...ctx, seed, archetype });
+    return {
+      spec: fallback,
+      source: 'fallback',
+      error: 'No API key configured. Generated a data-fitted layout. Add a key in Settings to let a model design the board.',
+    };
+  }
 
   try {
     const result = await generateContent({ contents: prompt, json: true });

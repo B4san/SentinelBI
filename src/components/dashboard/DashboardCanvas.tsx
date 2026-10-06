@@ -69,6 +69,7 @@ export function DashboardCanvas({
             rowHeight={rowHeight}
             editing={editing}
             selected={selectedId === widget.id}
+            onSelect={() => onSelect?.(widget.id)}
             onMove={(layout) => {
               onChange?.({
                 ...spec,
@@ -98,6 +99,7 @@ function GridItem({
   rowHeight,
   editing,
   selected,
+  onSelect,
   onMove,
   children,
 }: {
@@ -106,6 +108,7 @@ function GridItem({
   rowHeight: number;
   editing: boolean;
   selected: boolean;
+  onSelect?: () => void;
   onMove: (layout: DashboardWidget['layout']) => void;
   children: React.ReactNode;
 }) {
@@ -153,6 +156,15 @@ function GridItem({
     start.current = { px: e.clientX, py: e.clientY, layout: widget.layout, mode };
   };
 
+  const onCardPointerDown = (e: React.PointerEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-drag-handle="true"]')) {
+      onPointerDown(e, 'move');
+      return;
+    }
+    onSelect?.();
+  };
+
   const onPointerMove = (e: React.PointerEvent) => {
     if (!start.current) return;
     const next = snapFromDelta(e.clientX - start.current.px, e.clientY - start.current.py, start.current.mode, start.current.layout);
@@ -167,10 +179,9 @@ function GridItem({
     <div
       ref={host}
       style={style}
-      onPointerDown={(e) => onPointerDown(e, 'move')}
+      onPointerDown={onCardPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      className={editing ? 'cursor-grab' : ''}
     >
       {children}
       {editing && (

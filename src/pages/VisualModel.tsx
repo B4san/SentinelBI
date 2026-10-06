@@ -177,7 +177,13 @@ export function VisualModel() {
         <>
           <div className="flex flex-col lg:flex-row gap-3 lg:items-center justify-between">
             <div className="flex flex-wrap gap-2">
-              <Button variant={editing ? 'default' : 'outline'} onClick={() => setEditing((v) => !v)}>
+              <Button variant={editing ? 'default' : 'outline'} onClick={() => {
+                setEditing((v) => {
+                  const next = !v;
+                  if (next && spec.widgets[0]) setSelectedId(spec.widgets[0].id);
+                  return next;
+                });
+              }}>
                 {editing ? <Save className="w-4 h-4 mr-2" /> : <Edit3 className="w-4 h-4 mr-2" />}
                 {editing ? 'Done' : 'Edit layout'}
               </Button>

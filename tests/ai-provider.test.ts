@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mapProviderError } from '../src/lib/ai/errors';
 import { authHeaders, buildChatBody, chatCompletionsUrl, extractChatText, modelsUrl } from '../src/lib/ai/openaiCompatible';
 import { PROVIDERS, isProviderId, normalizeBaseUrl } from '../src/lib/ai/providers';
-import { contentsToPrompt, requestToMessages, resolveProviderConfig } from '../src/lib/ai/resolve';
+import { assertApiKey, contentsToPrompt, requestToMessages, resolveProviderConfig } from '../src/lib/ai/resolve';
 import { AIProviderError } from '../src/lib/ai/types';
 
 describe('provider catalog', () => {
@@ -41,6 +41,15 @@ describe('resolveProviderConfig', () => {
     expect(resolved.apiKey).toBe('server-key');
     expect(resolved.source.apiKey).toBe('env');
     expect(resolved.model).toBe(PROVIDERS.gemini.defaultModel);
+  });
+
+  it('rejects missing keys for hosted providers but allows local ones', () => {
+    expect(() =>
+      assertApiKey(resolveProviderConfig({ provider: 'gemini' }, {})),
+    ).toThrow(/Missing API key/);
+    expect(() =>
+      assertApiKey(resolveProviderConfig({ provider: 'ollama' }, {})),
+    ).not.toThrow();
   });
 
   it('uses AI_API_KEY for custom providers without a user key', () => {

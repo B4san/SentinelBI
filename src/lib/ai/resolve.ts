@@ -1,5 +1,5 @@
 import { PROVIDERS, isProviderId, normalizeBaseUrl } from './providers';
-import type { GenerateRequest, ProviderId, ResolvedProviderConfig } from './types';
+import { AIProviderError, type GenerateRequest, type ProviderId, type ResolvedProviderConfig } from './types';
 
 export interface EnvLike {
   [key: string]: string | undefined;
@@ -93,8 +93,11 @@ export function resolveProviderConfig(
 export function assertApiKey(config: ResolvedProviderConfig): void {
   const def = PROVIDERS[config.provider];
   if (def.requiresApiKey && !config.apiKey) {
-    throw new Error(
-      `Missing API key for ${def.label}. Set it in Settings or the ${def.envKey} environment variable.`,
-    );
+    throw new AIProviderError({
+      message: `Missing API key for ${def.label}. Set it in Settings or the ${def.envKey} environment variable.`,
+      status: 401,
+      code: 'auth',
+      provider: config.provider,
+    });
   }
 }

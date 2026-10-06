@@ -44,11 +44,11 @@ function chooseChartType(
   opts: { hasTime: boolean; hasCategory: boolean; hasNumeric: boolean; featured: boolean; used: Set<string> },
 ): ChartType {
   const pool: ChartType[] = [];
-  if (opts.hasTime) pool.push('line', 'area', 'stepped-line');
-  if (opts.hasCategory && opts.hasNumeric) pool.push('bar', 'horizontal-bar', 'donut', 'treemap');
-  if (opts.hasNumeric) pool.push('scatter', 'area');
-  if (opts.featured) pool.push('area', 'bar', 'line');
-  if (opts.hasCategory) pool.push('pack', 'radial');
+  if (opts.hasTime) pool.push('line', 'area', 'stepped-line', 'bar');
+  if (opts.hasCategory && opts.hasNumeric) pool.push('bar', 'horizontal-bar', 'donut', 'area');
+  if (opts.hasNumeric) pool.push('bar', 'area', 'scatter');
+  if (opts.featured) pool.push('area', 'bar', 'line', 'horizontal-bar');
+  if (opts.hasCategory && !opts.hasTime) pool.push('donut', 'treemap');
   if (pool.length === 0) pool.push('bar', 'area');
   const unused = pool.filter((t) => !opts.used.has(t));
   return pick(rng, unused.length ? unused : pool);
