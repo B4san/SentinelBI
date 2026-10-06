@@ -46,7 +46,6 @@ export function DashboardCanvas({
       <header className="mb-5 w-full">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] mb-1.5" style={{ color: palette.muted }}>
           {meta?.label || spec.archetype.replace(/-/g, ' ')}
-          {meta?.brief ? ` · ${meta.brief}` : ''}
         </p>
         <h2 className={`${spec.theme.headingFont || spec.theme.fontFamily} text-[28px] font-semibold tracking-tight`}>
           {spec.title}
@@ -122,13 +121,15 @@ function GridItem({
   const start = useRef<{ px: number; py: number; layout: DashboardWidget['layout']; mode: 'move' | 'resize' } | null>(null);
   const host = useRef<HTMLDivElement>(null);
 
+  const cellHeight = h * rowHeight + Math.max(0, h - 1) * gap;
   const style = {
     gridColumn: `${x + 1} / span ${Math.max(1, w)}`,
     gridRow: `${y + 1} / span ${Math.max(1, h)}`,
     minWidth: 0,
-    minHeight: 0,
+    height: cellHeight,
     zIndex: selected ? 4 : 1,
     position: 'relative' as const,
+    ['--dash-cell-h' as string]: `${cellHeight}px`,
   };
 
   const snapFromDelta = (dx: number, dy: number, mode: 'move' | 'resize', origin: DashboardWidget['layout']) => {

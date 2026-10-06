@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import {
   Area,
   AreaChart,
@@ -11,7 +11,6 @@ import {
   LineChart,
   Pie,
   PieChart,
-  ResponsiveContainer,
   Scatter,
   ScatterChart,
   Tooltip,
@@ -30,6 +29,41 @@ const D3_TYPES = new Set([
   'matrix', 'dot-plot', 'swarm', 'distribution',
 ]);
 
+function widthFromGrid(el: HTMLElement, cols: number): number {
+  const grid = el.closest('.dash-grid') as HTMLElement | null;
+  if (grid && cols > 0) {
+    const styles = getComputedStyle(grid);
+    const gap = Number.parseFloat(styles.columnGap || styles.gap || '14') || 14;
+    const inner = grid.clientWidth - gap * 11;
+    return Math.max(160, Math.round((inner / 12) * cols + gap * Math.max(0, cols - 1) - 28));
+  }
+  return Math.round(el.getBoundingClientRect().width);
+}
+
+function usePlotWidth(cols: number): [React.RefObject<HTMLDivElement | null>, number] {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(0);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => {
+      const measured = Math.round(el.getBoundingClientRect().width);
+      const estimated = widthFromGrid(el, cols);
+      const next = Math.max(measured, estimated);
+      if (next > 0) setWidth(next);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    const grid = el.closest('.dash-grid');
+    if (grid) ro.observe(grid);
+    return () => ro.disconnect();
+  }, [cols]);
+
+  return [ref, width];
+}
+
 function formatTick(value: unknown, field?: string): string {
   const raw = String(value ?? '');
   if (field && looksLikeTime(field, [raw])) return prettyValue(raw);
@@ -45,17 +79,22 @@ export function ChartRenderer({
   spec,
   widget,
   datasets,
+  height,
 }: {
   spec: DashboardSpec;
   widget: DashboardWidget;
   datasets: DashboardDataset[];
+  height?: number;
 }) {
+  const plotHeight = Math.max(180, height || 220);
+  const [boxRef, plotWidth] = usePlotWidth(widget.layout?.w || 6);
   const palette = spec.theme.palette;
   const data = prepareChartSeries(datasets, widget, spec.filters);
   const type = widget.chartType || 'bar';
   const color = widget.color || palette.chart[0];
   const xKey = widget.xField || 'name';
   const yKey = widget.yField || 'value';
+
   if (data.length === 0) {
     return (
       <div className="h-full min-h-[140px] flex items-center justify-center text-sm" style={{ color: palette.muted }}>
@@ -100,10 +139,11 @@ export function ChartRenderer({
 
   const grid = <CartesianGrid stroke={palette.border} strokeDasharray="3 6" vertical={false} />;
 
-  if (['pie', 'donut'].includes(type)) {
-    return (
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
+  let chart: React.ReactNode = null;
+  if (plotWidth >= 80) {
+    if (['pie', 'donut'].includes(type)) {
+      chart = (
+        <PieChart width={plotWidth} height={plotHeight}>
           <Pie
             data={data}
             dataKey={yKey}
@@ -127,46 +167,34 @@ export function ChartRenderer({
             wrapperStyle={{ fontSize: 11, color: palette.muted }}
           />
         </PieChart>
-      </ResponsiveContainer>
-    );
-  }
-
-  if (['scatter', 'bubble'].includes(type)) {
-    return (
-      <ResponsiveContainer width="100%" height="100%">
-        <ScatterChart margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+      );
+    } else if (['scatter', 'bubble'].includes(type)) {
+      chart = (
+        <ScatterChart width={plotWidth} height={plotHeight} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
           {grid}
           <XAxis dataKey={xKey} stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => formatTick(v, xKey)} />
           <YAxis dataKey={yKey} stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} width={52} tickFormatter={(v) => formatAxisNumber(Number(v), widget.yField)} />
           {tooltip}
           <Scatter data={data} fill={color} isAnimationActive={false} />
         </ScatterChart>
-      </ResponsiveContainer>
-    );
-  }
-
-  if (['line', 'stepped-line'].includes(type)) {
-    return (
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+      );
+    } else if (['line', 'stepped-line'].includes(type)) {
+      chart = (
+        <LineChart width={plotWidth} height={plotHeight} data={data} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
           {grid}
           <XAxis dataKey={xKey} stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => formatTick(v, xKey)} minTickGap={16} />
           <YAxis stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} width={52} tickFormatter={(v) => formatAxisNumber(Number(v), widget.yField)} />
           {tooltip}
           <Line type={type === 'stepped-line' ? 'stepAfter' : 'monotone'} dataKey={yKey} name={prettyField(yKey)} stroke={color} strokeWidth={2.25} dot={false} isAnimationActive={false} />
         </LineChart>
-      </ResponsiveContainer>
-    );
-  }
-
-  if (['area', 'stacked-area'].includes(type)) {
-    const gradId = `fill-${widget.id}`;
-    return (
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+      );
+    } else if (['area', 'stacked-area'].includes(type)) {
+      const gradId = `fill-${widget.id}`;
+      chart = (
+        <AreaChart width={plotWidth} height={plotHeight} data={data} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={color} stopOpacity={0.28} />
+              <stop offset="5%" stopColor={color} stopOpacity={0.4} />
               <stop offset="95%" stopColor={color} stopOpacity={0} />
             </linearGradient>
           </defs>
@@ -174,34 +202,40 @@ export function ChartRenderer({
           <XAxis dataKey={xKey} stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => formatTick(v, xKey)} minTickGap={16} />
           <YAxis stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} width={52} tickFormatter={(v) => formatAxisNumber(Number(v), widget.yField)} />
           {tooltip}
-          <Area type="monotone" dataKey={yKey} name={prettyField(yKey)} stroke={color} fill={`url(#${gradId})`} strokeWidth={2.25} isAnimationActive={false} />
+          <Area type="monotone" dataKey={yKey} name={prettyField(yKey)} stroke={color} fill={`url(#${gradId})`} strokeWidth={2.4} isAnimationActive={false} />
         </AreaChart>
-      </ResponsiveContainer>
-    );
+      );
+    } else {
+      chart = (
+        <BarChart
+          width={plotWidth}
+          height={plotHeight}
+          data={data}
+          layout={type === 'horizontal-bar' ? 'vertical' : 'horizontal'}
+          margin={{ top: 8, right: 12, left: type === 'horizontal-bar' ? 8 : 4, bottom: 4 }}
+        >
+          {grid}
+          {type === 'horizontal-bar' ? (
+            <>
+              <XAxis type="number" stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => formatAxisNumber(Number(v), widget.yField)} />
+              <YAxis type="category" dataKey={xKey} stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} width={88} tickFormatter={(v) => formatTick(v, xKey)} />
+            </>
+          ) : (
+            <>
+              <XAxis dataKey={xKey} stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => formatTick(v, xKey)} minTickGap={18} />
+              <YAxis stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} width={52} tickFormatter={(v) => formatAxisNumber(Number(v), widget.yField)} />
+            </>
+          )}
+          {tooltip}
+          <Bar dataKey={yKey} name={prettyField(yKey)} fill={color} radius={type === 'horizontal-bar' ? [0, 6, 6, 0] : [6, 6, 0, 0]} isAnimationActive={false} maxBarSize={36} />
+        </BarChart>
+      );
+    }
   }
 
   return (
-    <ResponsiveContainer width="100%" height="100%">
-      <BarChart
-        data={data}
-        layout={type === 'horizontal-bar' ? 'vertical' : 'horizontal'}
-        margin={{ top: 8, right: 12, left: type === 'horizontal-bar' ? 8 : 4, bottom: 4 }}
-      >
-        {grid}
-        {type === 'horizontal-bar' ? (
-          <>
-            <XAxis type="number" stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => formatAxisNumber(Number(v), widget.yField)} />
-            <YAxis type="category" dataKey={xKey} stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} width={78} tickFormatter={(v) => formatTick(v, xKey)} />
-          </>
-        ) : (
-          <>
-            <XAxis dataKey={xKey} stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => formatTick(v, xKey)} interval={0} minTickGap={8} />
-            <YAxis stroke={palette.muted} fontSize={11} tickLine={false} axisLine={false} width={52} tickFormatter={(v) => formatAxisNumber(Number(v), widget.yField)} />
-          </>
-        )}
-        {tooltip}
-        <Bar dataKey={yKey} name={prettyField(yKey)} fill={color} radius={type === 'horizontal-bar' ? [0, 6, 6, 0] : [6, 6, 0, 0]} isAnimationActive={false} maxBarSize={42} />
-      </BarChart>
-    </ResponsiveContainer>
+    <div ref={boxRef} className="w-full min-w-0" style={{ height: plotHeight, width: '100%' }}>
+      {chart}
+    </div>
   );
 }

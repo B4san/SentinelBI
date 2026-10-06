@@ -84,7 +84,7 @@ export function WidgetCard({
           )}
         </header>
       )}
-      <div className={`min-h-0 flex-1 ${isKpi || isSection ? '' : 'px-3 pb-3'}`}>
+      <div className={`min-h-0 min-w-0 flex-1 ${isKpi || isSection ? '' : 'px-3 pb-3 relative'}`}>
         <WidgetBody spec={spec} widget={widget} datasets={datasets} editing={editing} />
       </div>
     </article>
@@ -164,13 +164,13 @@ function WidgetBody({
     const bar = tone === 'warning' ? '#e11d48' : tone === 'positive' ? palette.accent : palette.muted;
     return (
       <div
-        className={`h-full flex ${strip ? 'flex-row items-center gap-4 px-4 py-3' : 'flex-col justify-center px-5 py-4'}`}
+        className={`h-full flex ${strip ? 'flex-row items-center gap-4 px-4 py-3' : 'flex-col justify-start px-5 py-4'}`}
         style={{ borderLeft: featured ? `3px solid ${bar}` : undefined }}
       >
         <p className="text-[10px] font-bold uppercase tracking-[0.16em] shrink-0" style={{ color: palette.accent }}>
           {widget.insight?.title || widget.title || 'Finding'}
         </p>
-        <p className={`${featured ? 'text-[17px] leading-relaxed mt-3' : strip ? 'text-[13px] leading-snug' : 'text-[13px] leading-relaxed mt-2'}`} style={{ color: palette.text }}>
+        <p className={`${featured ? 'text-[16px] leading-relaxed mt-3' : strip ? 'text-[13px] leading-snug' : 'text-[13px] leading-relaxed mt-2'}`} style={{ color: palette.text }}>
           {widget.insight?.text || widget.subtitle}
         </p>
       </div>
@@ -230,7 +230,12 @@ function WidgetBody({
 
   return (
     <div className="h-full w-full min-h-0">
-      <ChartRenderer spec={spec} widget={widget} datasets={datasets} />
+      <ChartRenderer
+        spec={spec}
+        widget={widget}
+        datasets={datasets}
+        height={Math.max(180, widget.layout.h * 50 - 58)}
+      />
     </div>
   );
 }

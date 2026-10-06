@@ -100,6 +100,8 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
     value: number;
     delta?: number;
     sparkline?: number[];
+    filter?: DashboardWidget['filter'];
+    hint?: string;
   }> = [];
 
   if (nums[0]) {
@@ -132,12 +134,14 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
     const ranked = rankedGroups(rows, cats[0], nums[0]);
     if (ranked[0]) {
       derivedKpis.push({
-        title: `Top ${prettyField(cats[0]).toLowerCase()}`,
+        title: `${ranked[0].key} · top ${prettyField(cats[0]).toLowerCase()}`,
         field: nums[0],
         aggregation: 'sum',
         format: metricFormat(nums[0]),
         value: ranked[0].value,
+        filter: { field: cats[0], op: 'equals' as const, value: ranked[0].key },
         sparkline: sparklineValues(rows.filter((row) => String(row[cats[0]]) === ranked[0].key), nums[0], times[0]),
+        hint: ranked[0].key,
       });
     }
   }
@@ -166,6 +170,25 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
       value: new Set(rows.map((row) => String(row[cats[0]]))).size,
     });
   }
+  if (cats[1]) {
+    derivedKpis.push({
+      title: `${prettyField(cats[1])}s`,
+      aggregation: 'count',
+      format: 'number',
+      value: new Set(rows.map((row) => String(row[cats[1]]))).size,
+    });
+  }
+  if (nums[0]) {
+    const values = rows.map((row) => Number(row[nums[0]])).filter((n) => !Number.isNaN(n));
+    derivedKpis.push({
+      title: kpiTitle(nums[0], 'avg'),
+      field: nums[0],
+      aggregation: 'avg',
+      format: metricFormat(nums[0]),
+      value: aggregateNumber(values, 'avg'),
+      sparkline: sparklineValues(rows, nums[0], times[0]),
+    });
+  }
   if (nums[3]) {
     const values = rows.map((row) => Number(row[nums[3]])).filter((n) => !Number.isNaN(n));
     derivedKpis.push({
@@ -180,7 +203,7 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
 
   slots.forEach((slot, index) => {
     if (slot.type === 'kpi') {
-      const kpi = derivedKpis[kpiCursor % Math.max(derivedKpis.length, 1)] || derivedKpis[0];
+      const kpi = derivedKpis[kpiCursor] || derivedKpis[derivedKpis.length - 1] || derivedKpis[0];
       const trend = kpi?.delta != null
         ? `${kpi.delta >= 0 ? '+' : ''}${kpi.delta.toFixed(1)}% vs first half`
         : undefined;
@@ -188,12 +211,13 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
         id: `kpi-${index}`,
         type: 'kpi',
         title: kpi?.title || 'Metric',
-        subtitle: primary.name,
+        subtitle: kpi?.hint,
         layout: slot.layout,
         role: slot.role,
         datasetId: primary.id,
         yField: kpi?.field,
         aggregation: kpi?.aggregation || 'sum',
+        filter: kpi?.filter,
         color: palette.chart[index % palette.chart.length],
         kpi: {
           value: formatMetric(kpi?.value || 0, kpi?.format),
@@ -215,7 +239,7 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
         id: `insight-${index}`,
         type: 'insight',
         title: finding?.title || 'Key finding',
-        subtitle: finding?.kind,
+        subtitle: undefined,
         layout: slot.layout,
         role: slot.featured ? 'featured' : slot.role,
         insight: {
@@ -252,11 +276,16 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
     }
 
     const preferTime = Boolean(slot.prefer?.some((t) => t === 'area' || t === 'line' || t === 'stepped-line') && times[0]);
-    const compareDim = slot.role === 'compare-b' ? cats[1] || cats[0] : cats[chartCursor % Math.max(cats.length, 1)];
-    const xField = preferTime || (times[0] && slot.featured)
-      ? times[0]
-      : compareDim || times[0] || nums[0];
-    const yField = nums[chartCursor % Math.max(nums.length, 1)] || nums[0];
+    const xField = slot.role === 'compare-a'
+      ? (cats[0] || times[0] || nums[0])
+      : slot.role === 'compare-b'
+        ? (cats[1] || times[0] || cats[0] || nums[0])
+        : preferTime || (times[0] && slot.featured)
+          ? times[0]
+          : cats[chartCursor % Math.max(cats.length, 1)] || times[0] || nums[0];
+    const yField = slot.role === 'compare-b'
+      ? (nums[1] || nums[0])
+      : nums[chartCursor % Math.max(nums.length, 1)] || nums[0];
     const encoding = `${xField}:${yField}`;
     let chartType = chooseChartType(rng, slot.prefer, {
       hasTime: Boolean(times[0] && xField === times[0]),
@@ -279,7 +308,7 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
       title: yField && xField ? `${yPretty} by ${xPretty}` : 'Distribution',
       subtitle: slot.role === 'compare-a' || slot.role === 'compare-b'
         ? `Compared on ${xPretty}`
-        : primary.name,
+        : undefined,
       layout: slot.layout,
       role: slot.role || (slot.featured ? 'hero' : undefined),
       chartType,

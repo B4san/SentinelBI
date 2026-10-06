@@ -181,7 +181,9 @@ describe('fallback quality', () => {
     expect(sales.widgets.filter((w) => w.type === 'kpi').length).toBe(4);
     expect(editorial.widgets.some((w) => w.type === 'section')).toBe(true);
     expect(mosaic.widgets.filter((w) => w.type === 'kpi').length).toBe(8);
-    expect(compare.widgets.filter((w) => w.role === 'compare-a' || w.role === 'compare-b').length).toBe(2);
+    const pair = compare.widgets.filter((w) => w.role === 'compare-a' || w.role === 'compare-b');
+    expect(pair.length).toBe(2);
+    expect(pair[0].xField).not.toBe(pair[1].xField);
   });
 
   it('builds a usable board for web analytics', () => {

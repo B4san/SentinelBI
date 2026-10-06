@@ -16,7 +16,7 @@ export interface FieldClasses {
 
 const TIME_NAME = /^(date|time|day|week|month|year|opened|closed|period|timestamp|created|updated)/i;
 const MONEY_NAME = /rev|sales|amount|price|gmv|arr|mrr|acv|spend|cost|payroll/i;
-const RATE_NAME = /rate|margin|csat|nps|pct|percent|bounce|attrition|accept|conversion/i;
+const RATE_NAME = /(rate|margin|csat|nps|pct|percent|bounce|attrition|acceptRate)$/i;
 
 export function prettyField(name: string): string {
   return String(name || '')
@@ -31,7 +31,7 @@ export function prettyValue(value: unknown): string {
   if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
     const d = new Date(raw);
     if (!Number.isNaN(d.getTime())) {
-      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     }
   }
   return raw;

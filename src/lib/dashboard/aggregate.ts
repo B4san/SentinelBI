@@ -119,10 +119,17 @@ export function computeKpiStats(
 
   const field = widget.kpi?.field || widget.yField;
   const aggregation = widget.kpi?.aggregation || widget.aggregation || 'sum';
-  const values = field
-    ? rows.map((row) => Number(row[field])).filter((n) => !Number.isNaN(n))
-    : [];
-  const raw = field ? aggregateNumber(values, aggregation) : rows.length;
+  if (!field) {
+    return {
+      value: widget.kpi?.value || formatMetric(rows.length, 'number'),
+      raw: rows.length,
+      trend: widget.kpi?.trend,
+      sparkline: widget.kpi?.sparkline || [],
+      format,
+    };
+  }
+  const values = rows.map((row) => Number(row[field])).filter((n) => !Number.isNaN(n));
+  const raw = aggregateNumber(values, aggregation);
   const fields = classifyFields(dataset);
   const timeField = fields.time[0];
   const change = field && timeField ? periodChange(rows, timeField, field) : null;
