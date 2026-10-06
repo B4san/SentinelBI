@@ -147,6 +147,30 @@ body {
   font-size: 0.95rem;
 }
 
+.dash-board {
+  width: 100%;
+  background: transparent;
+}
+
+.dash-grid {
+  width: 100%;
+}
+
+.dash-card {
+  background: var(--card);
+}
+
+.dash-card-flush {
+  box-shadow: none !important;
+}
+
+.dash-kpi-value {
+  font-size: clamp(1.35rem, 1.5vw, 1.75rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
 .surface-card {
   background: var(--card);
   color: var(--card-foreground);

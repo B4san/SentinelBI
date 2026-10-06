@@ -6,7 +6,8 @@ import { PALETTES } from '../src/lib/dashboard/palettes';
 import { createRng, hashString, makeSeed } from '../src/lib/dashboard/seed';
 import { LAYOUT_ARCHETYPES } from '../src/lib/dashboard/types';
 import { extractJsonObject, fromLegacyLayout, sanitizeGrid, validateDashboardSpec } from '../src/lib/dashboard/validate';
-import { SAMPLE_SALES_ROWS } from '../src/lib/sampleData';
+import { analyzeDataset, classifyFields } from '../src/lib/dashboard/insights';
+import { SAMPLE_SALES_ROWS, SAMPLE_WEB_ROWS } from '../src/lib/sampleData';
 
 const salesDataset = {
   id: 'ds-sales',
@@ -133,6 +134,71 @@ describe('aggregation and filters', () => {
   it('formats compact metrics', () => {
     expect(formatMetric(12500, 'number')).toBe('12.5K');
     expect(formatMetric(2_400_000, 'currency')).toBe('$2.4M');
+  });
+});
+
+describe('insight engine', () => {
+  it('does not treat dates as winning categories', () => {
+    const findings = analyzeDataset(salesDataset);
+    const blob = findings.map((f) => `${f.title} ${f.text}`).join(' ');
+    expect(blob).not.toMatch(/leads Date/i);
+    expect(blob).not.toMatch(/1 observations/i);
+    expect(findings[0].text.length).toBeGreaterThan(24);
+    expect(classifyFields(salesDataset).time).toContain('date');
+    expect(classifyFields(salesDataset).dimensions).not.toContain('date');
+  });
+
+  it('surfaces trend and cohort findings for sales data', () => {
+    const findings = analyzeDataset(salesDataset);
+    const kinds = findings.map((f) => f.kind);
+    expect(kinds.some((k) => k === 'top' || k === 'trend' || k === 'share')).toBe(true);
+    expect(findings.every((f) => /[.!]$/.test(f.text.trim()) || f.text.includes('%'))).toBe(true);
+  });
+});
+
+describe('fallback quality', () => {
+  it('emits compact KPIs with computed values and no nonsense copy', () => {
+    const spec = buildFallbackDashboard({ datasets: [salesDataset], seed: 21, archetype: 'hero-kpi-rail', mode: 'light' });
+    const kpis = spec.widgets.filter((w) => w.type === 'kpi');
+    expect(kpis.every((w) => w.layout.h === 2)).toBe(true);
+    expect(kpis.every((w) => w.layout.w >= 3)).toBe(true);
+    expect(kpis.some((w) => w.kpi?.sparkline && w.kpi.sparkline.length >= 3)).toBe(true);
+    const insights = spec.widgets.filter((w) => w.type === 'insight').map((w) => w.insight?.text || '');
+    expect(insights.join(' ')).not.toMatch(/leads Date/i);
+    expect(insights.join(' ')).not.toMatch(/observations/i);
+    const widths = new Map<number, number>();
+    for (const widget of spec.widgets) {
+      widths.set(widget.layout.y, (widths.get(widget.layout.y) || 0) + widget.layout.w);
+    }
+    expect([...widths.values()].every((sum) => sum === 12)).toBe(true);
+  });
+
+  it('keeps archetypes compositionally distinct', () => {
+    const sales = buildFallbackDashboard({ datasets: [salesDataset], seed: 3, archetype: 'hero-kpi-rail', mode: 'light' });
+    const editorial = buildFallbackDashboard({ datasets: [salesDataset], seed: 3, archetype: 'editorial', mode: 'light' });
+    const mosaic = buildFallbackDashboard({ datasets: [salesDataset], seed: 3, archetype: 'metric-mosaic', mode: 'light' });
+    const compare = buildFallbackDashboard({ datasets: [salesDataset], seed: 3, archetype: 'comparison', mode: 'light' });
+    expect(sales.widgets.filter((w) => w.type === 'kpi').length).toBe(4);
+    expect(editorial.widgets.some((w) => w.type === 'section')).toBe(true);
+    expect(mosaic.widgets.filter((w) => w.type === 'kpi').length).toBe(8);
+    expect(compare.widgets.filter((w) => w.role === 'compare-a' || w.role === 'compare-b').length).toBe(2);
+  });
+
+  it('builds a usable board for web analytics', () => {
+    const webDataset = {
+      id: 'ds-web',
+      name: 'Web',
+      data: SAMPLE_WEB_ROWS as unknown as Record<string, unknown>[],
+      columns: [
+        { name: 'date', type: 'date' },
+        { name: 'channel', type: 'categorical' },
+        { name: 'sessions', type: 'numeric' },
+      ],
+    };
+    const spec = buildFallbackDashboard({ datasets: [webDataset], seed: 8, archetype: 'command-center', mode: 'dark' });
+    expect(spec.theme.palette.mode).toBe('dark');
+    expect(spec.widgets.some((w) => w.type === 'chart' && w.xField === 'date')).toBe(true);
+    expect(spec.narrative?.body).not.toMatch(/leads Date/i);
   });
 });
 

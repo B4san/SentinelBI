@@ -5,85 +5,85 @@ export const PALETTES: Palette[] = [
     id: 'ocean',
     label: 'Ocean',
     mode: 'light',
-    background: '#f3f7fb',
+    background: 'transparent',
     surface: '#ffffff',
-    text: '#0f2744',
-    muted: '#5b7390',
+    text: '#0f172a',
+    muted: '#64748b',
     accent: '#2563eb',
     accentSoft: '#dbeafe',
-    border: '#d7e3f4',
-    chart: ['#2563eb', '#0ea5e9', '#14b8a6', '#6366f1', '#f59e0b', '#ef4444'],
+    border: '#e2e8f0',
+    chart: ['#2563eb', '#0ea5e9', '#14b8a6', '#7c3aed', '#f59e0b', '#ef4444'],
   },
   {
     id: 'sunset',
     label: 'Sunset',
     mode: 'light',
-    background: '#fff6f1',
+    background: 'transparent',
     surface: '#ffffff',
-    text: '#3f1d12',
-    muted: '#9a6b58',
+    text: '#1c1917',
+    muted: '#78716c',
     accent: '#ea580c',
     accentSoft: '#ffedd5',
-    border: '#f3d5c4',
-    chart: ['#ea580c', '#f43f5e', '#f59e0b', '#8b5cf6', '#0ea5e9', '#10b981'],
+    border: '#e7e5e4',
+    chart: ['#ea580c', '#e11d48', '#d97706', '#7c3aed', '#0284c7', '#059669'],
   },
   {
     id: 'forest',
     label: 'Forest',
     mode: 'light',
-    background: '#f3f7f3',
+    background: 'transparent',
     surface: '#ffffff',
     text: '#14532d',
     muted: '#4d7c5a',
     accent: '#059669',
     accentSoft: '#d1fae5',
-    border: '#cce3d4',
+    border: '#dce8df',
     chart: ['#059669', '#0d9488', '#65a30d', '#2563eb', '#d97706', '#be123c'],
   },
   {
-    id: 'rose',
-    label: 'Rose',
+    id: 'violet',
+    label: 'Violet',
     mode: 'light',
-    background: '#fdf4f7',
+    background: 'transparent',
     surface: '#ffffff',
-    text: '#4a102a',
-    muted: '#9d4b6c',
-    accent: '#e11d48',
-    accentSoft: '#ffe4e6',
-    border: '#f4cdd8',
-    chart: ['#e11d48', '#db2777', '#7c3aed', '#2563eb', '#f59e0b', '#0f766e'],
-  },
-  {
-    id: 'amber',
-    label: 'Amber',
-    mode: 'light',
-    background: '#fffbeb',
-    surface: '#ffffff',
-    text: '#451a03',
-    muted: '#92400e',
-    accent: '#d97706',
-    accentSoft: '#fef3c7',
-    border: '#f3e0b5',
-    chart: ['#d97706', '#ea580c', '#2563eb', '#059669', '#7c3aed', '#e11d48'],
+    text: '#1e1b4b',
+    muted: '#6b7280',
+    accent: '#7c3aed',
+    accentSoft: '#ede9fe',
+    border: '#e4e4f0',
+    chart: ['#7c3aed', '#2563eb', '#db2777', '#0891b2', '#d97706', '#16a34a'],
   },
   {
     id: 'slate',
     label: 'Slate',
     mode: 'light',
-    background: '#f4f6f8',
+    background: 'transparent',
     surface: '#ffffff',
     text: '#0f172a',
     muted: '#64748b',
     accent: '#334155',
     accentSoft: '#e2e8f0',
-    border: '#d8dee8',
+    border: '#e2e8f0',
     chart: ['#334155', '#2563eb', '#0f766e', '#b45309', '#7c3aed', '#be123c'],
+  },
+  {
+    id: 'ice',
+    label: 'Ice',
+    mode: 'light',
+    background: 'transparent',
+    surface: '#ffffff',
+    text: '#164e63',
+    muted: '#578392',
+    accent: '#0891b2',
+    accentSoft: '#cffafe',
+    border: '#d7e8ee',
+    chart: ['#0891b2', '#2563eb', '#7c3aed', '#059669', '#d97706', '#e11d48'],
   },
   {
     id: 'midnight',
     label: 'Midnight',
     mode: 'dark',
-    background: '#0b1220',
+    background: 'transparent',
     surface: '#141c2e',
     text: '#e8eef7',
     muted: '#94a3b8',
@@ -96,40 +96,40 @@ export const PALETTES: Palette[] = [
     id: 'aurora',
     label: 'Aurora',
     mode: 'dark',
-    background: '#081411',
-    surface: '#10221c',
+    background: 'transparent',
+    surface: '#12231d',
     text: '#e7fff6',
-    muted: '#86b8a8',
+    muted: '#8ab5a8',
     accent: '#34d399',
     accentSoft: '#14532d',
     border: '#1c3b32',
     chart: ['#34d399', '#22d3ee', '#60a5fa', '#fbbf24', '#f472b6', '#c084fc'],
   },
   {
-    id: 'terracotta',
-    label: 'Terracotta',
-    mode: 'light',
-    background: '#faf4ef',
-    surface: '#fffdfb',
-    text: '#3f2416',
-    muted: '#8b6a55',
-    accent: '#c2410c',
-    accentSoft: '#ffedd5',
-    border: '#ead7c8',
-    chart: ['#c2410c', '#b45309', '#0f766e', '#1d4ed8', '#9f1239', '#6d28d9'],
+    id: 'ember',
+    label: 'Ember',
+    mode: 'dark',
+    background: 'transparent',
+    surface: '#1c1412',
+    text: '#fde7dc',
+    muted: '#c4a394',
+    accent: '#fb923c',
+    accentSoft: '#431407',
+    border: '#3f2a22',
+    chart: ['#fb923c', '#f472b6', '#fbbf24', '#60a5fa', '#34d399', '#c084fc'],
   },
   {
-    id: 'ice',
-    label: 'Ice',
-    mode: 'light',
-    background: '#f2f8fb',
-    surface: '#ffffff',
-    text: '#164e63',
-    muted: '#578392',
-    accent: '#0891b2',
-    accentSoft: '#cffafe',
-    border: '#c5e4ed',
-    chart: ['#0891b2', '#2563eb', '#7c3aed', '#059669', '#d97706', '#e11d48'],
+    id: 'orchid',
+    label: 'Orchid',
+    mode: 'dark',
+    background: 'transparent',
+    surface: '#181428',
+    text: '#f3e8ff',
+    muted: '#c4b5fd',
+    accent: '#c084fc',
+    accentSoft: '#3b0764',
+    border: '#2e2648',
+    chart: ['#c084fc', '#60a5fa', '#f472b6', '#34d399', '#fbbf24', '#22d3ee'],
   },
 ];
 
@@ -149,10 +149,69 @@ export const RADIUS_TOKENS = [
   'rounded-[1.75rem]',
 ] as const;
 
+const LIGHT_STRUCT = {
+  background: 'transparent',
+  surface: '#ffffff',
+  text: '#0f172a',
+  muted: '#64748b',
+  border: '#e2e8f0',
+};
+
+const DARK_STRUCT = {
+  background: 'transparent',
+  surface: '#141c2e',
+  text: '#e8eef7',
+  muted: '#94a3b8',
+  border: '#243049',
+};
+
+function mixHex(hex: string, other: string, amount: number): string {
+  const parse = (value: string) => {
+    const raw = value.replace('#', '');
+    const full = raw.length === 3 ? raw.split('').map((c) => c + c).join('') : raw;
+    return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
+  };
+  try {
+    const a = parse(hex);
+    const b = parse(other);
+    const ch = a.map((n, i) => Math.round(n + (b[i] - n) * amount));
+    return `#${ch.map((n) => n.toString(16).padStart(2, '0')).join('')}`;
+  } catch {
+    return hex;
+  }
+}
+
 export function getPalette(id?: string): Palette {
   return PALETTES.find((p) => p.id === id) || PALETTES[0];
 }
 
 export function palettesForMode(mode: 'light' | 'dark'): Palette[] {
   return PALETTES.filter((p) => p.mode === mode);
+}
+
+/** Keep accent/chart identity, but never paint a contrasting board over the app. */
+export function harmonizePalette(palette: Palette, mode: 'light' | 'dark'): Palette {
+  const struct = mode === 'dark' ? DARK_STRUCT : LIGHT_STRUCT;
+  const accentSoft = mode === 'dark'
+    ? mixHex(palette.accent, '#0b1220', 0.78)
+    : mixHex(palette.accent, '#ffffff', 0.86);
+  return {
+    ...palette,
+    mode,
+    background: 'transparent',
+    surface: struct.surface,
+    text: struct.text,
+    muted: struct.muted,
+    border: struct.border,
+    accentSoft,
+  };
+}
+
+export function pickPaletteForMode(id: string | undefined, mode: 'light' | 'dark'): Palette {
+  const requested = id ? PALETTES.find((p) => p.id === id) : undefined;
+  if (requested && requested.mode === mode) return requested;
+  const sameFamily = requested
+    ? PALETTES.find((p) => p.mode === mode && p.chart[0] === requested.chart[0])
+    : undefined;
+  return sameFamily || palettesForMode(mode)[0] || PALETTES[0];
 }

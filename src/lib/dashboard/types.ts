@@ -102,14 +102,18 @@ export interface DashboardWidget {
   colors?: string[];
   aggregation?: Aggregation;
   filter?: WidgetFilter;
+  role?: 'hero' | 'support' | 'compare-a' | 'compare-b' | 'strip' | 'featured';
   kpi?: {
     value: string;
     trend?: string;
     field?: string;
     aggregation?: Aggregation;
     format?: 'number' | 'currency' | 'percent';
+    delta?: number;
+    sparkline?: number[];
   };
   insight?: {
+    title?: string;
     text: string;
     tone?: 'neutral' | 'positive' | 'warning';
   };

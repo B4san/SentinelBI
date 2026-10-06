@@ -15,6 +15,7 @@ import { VisualModel } from './pages/VisualModel';
 import { CodeCanvas } from './pages/CodeCanvas';
 import { Observability } from './pages/Observability';
 import { Settings } from './pages/Settings';
+import { DashboardPreview } from './pages/DashboardPreview';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const user = useStore(state => state.user);
@@ -30,6 +31,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/__dash-preview" element={<DashboardPreview />} />
         
         <Route path="/" element={
           <ProtectedRoute>

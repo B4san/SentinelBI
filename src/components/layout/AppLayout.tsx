@@ -219,7 +219,7 @@ export function AppLayout() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25 }}
-            className="h-full pt-3 max-w-[1400px] mx-auto"
+            className="h-full pt-3 w-full max-w-[1680px] mx-auto"
           >
             <Outlet />
           </motion.div>

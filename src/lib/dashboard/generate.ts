@@ -17,6 +17,7 @@ export async function generateDashboardSpec(
     existingJson: ctx.existing ? JSON.stringify(ctx.existing) : undefined,
     widgetId: ctx.widgetId,
     instruction: ctx.instruction,
+    mode: ctx.mode,
   });
 
   const settings = loadAiSettings();

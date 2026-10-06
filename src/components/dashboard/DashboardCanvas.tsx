@@ -1,14 +1,17 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef } from 'react';
 import type { DashboardDataset, DashboardSpec, DashboardWidget } from '../../lib/dashboard/types';
 import { CHART_TYPES } from '../../lib/dashboard/types';
+import { ARCHETYPE_META } from '../../lib/dashboard/archetypes';
+import { harmonizePalette } from '../../lib/dashboard/palettes';
 import { WidgetCard } from './WidgetCard';
+import { useStore } from '../../store';
 
 const COLS = 12;
 
 function rowHeightFor(density: DashboardSpec['theme']['density']): number {
-  if (density === 'compact') return 64;
-  if (density === 'airy') return 92;
-  return 78;
+  if (density === 'compact') return 52;
+  if (density === 'airy') return 60;
+  return 56;
 }
 
 export function DashboardCanvas({
@@ -28,39 +31,42 @@ export function DashboardCanvas({
   onChange?: (spec: DashboardSpec) => void;
   onRegenerateWidget?: (id: string) => void;
 }) {
-  const gap = spec.theme.density === 'compact' ? 12 : 16;
+  const appMode = useStore((s) => s.appearance.mode);
+  const gap = spec.theme.density === 'compact' ? 12 : 14;
   const rowHeight = rowHeightFor(spec.theme.density);
-  const maxY = spec.widgets.reduce((m, w) => Math.max(m, w.layout.y + w.layout.h), 8);
-  const palette = spec.theme.palette;
+  const palette = useMemo(() => harmonizePalette(spec.theme.palette, appMode), [spec.theme.palette, appMode]);
+  const themedSpec = useMemo(() => ({ ...spec, theme: { ...spec.theme, palette } }), [spec, palette]);
+  const meta = ARCHETYPE_META[spec.archetype];
 
   return (
     <div
-      className={`${spec.theme.fontFamily} relative`}
-      style={{
-        background: palette.background,
-        color: palette.text,
-        padding: spec.theme.density === 'airy' ? 28 : 20,
-        borderRadius: 28,
-      }}
+      className={`${spec.theme.fontFamily} dash-board w-full`}
+      style={{ color: palette.text }}
     >
-      {(spec.narrative?.headline || spec.subtitle) && (
-        <div className="mb-6 max-w-3xl">
-          <p className="text-xs uppercase tracking-[0.18em] mb-2" style={{ color: palette.muted }}>
-            {spec.archetype.replace(/-/g, ' ')}
-          </p>
-          <h2 className={`${spec.theme.headingFont || spec.theme.fontFamily} text-3xl font-bold tracking-tight`}>
-            {spec.title}
-          </h2>
-          <p className="mt-2 text-[15px] leading-relaxed" style={{ color: palette.muted }}>
+      <header className="mb-5 w-full">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] mb-1.5" style={{ color: palette.muted }}>
+          {meta?.label || spec.archetype.replace(/-/g, ' ')}
+          {meta?.brief ? ` · ${meta.brief}` : ''}
+        </p>
+        <h2 className={`${spec.theme.headingFont || spec.theme.fontFamily} text-[28px] font-semibold tracking-tight`}>
+          {spec.title}
+        </h2>
+        {(spec.narrative?.headline || spec.subtitle) && (
+          <p className="mt-1.5 text-[15px] leading-relaxed max-w-4xl" style={{ color: palette.muted }}>
             {spec.narrative?.headline || spec.subtitle}
           </p>
-          {spec.narrative?.body && (
-            <p className="mt-1 text-sm" style={{ color: palette.muted }}>{spec.narrative.body}</p>
-          )}
-        </div>
-      )}
+        )}
+      </header>
 
-      <div className="relative" style={{ minHeight: maxY * (rowHeight + gap) }}>
+      <div
+        className="dash-grid w-full"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${COLS}, minmax(0, 1fr))`,
+          gridAutoRows: `${rowHeight}px`,
+          gap,
+        }}
+      >
         {spec.widgets.map((widget) => (
           <GridItem
             key={widget.id}
@@ -78,7 +84,7 @@ export function DashboardCanvas({
             }}
           >
             <WidgetCard
-              spec={spec}
+              spec={themedSpec}
               widget={widget}
               datasets={datasets}
               editing={editing}
@@ -116,17 +122,14 @@ function GridItem({
   const start = useRef<{ px: number; py: number; layout: DashboardWidget['layout']; mode: 'move' | 'resize' } | null>(null);
   const host = useRef<HTMLDivElement>(null);
 
-  const style = useMemo(() => {
-    const colWidth = `calc((100% - ${(COLS - 1) * gap}px) / ${COLS})`;
-    return {
-      position: 'absolute' as const,
-      left: `calc(${x} * (${colWidth} + ${gap}px))`,
-      top: y * (rowHeight + gap),
-      width: `calc(${w} * ${colWidth} + ${(w - 1) * gap}px)`,
-      height: h * rowHeight + (h - 1) * gap,
-      zIndex: selected ? 4 : 1,
-    };
-  }, [x, y, w, h, gap, rowHeight, selected]);
+  const style = {
+    gridColumn: `${x + 1} / span ${Math.max(1, w)}`,
+    gridRow: `${y + 1} / span ${Math.max(1, h)}`,
+    minWidth: 0,
+    minHeight: 0,
+    zIndex: selected ? 4 : 1,
+    position: 'relative' as const,
+  };
 
   const snapFromDelta = (dx: number, dy: number, mode: 'move' | 'resize', origin: DashboardWidget['layout']) => {
     const parent = host.current?.parentElement;

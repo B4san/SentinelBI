@@ -20,6 +20,32 @@ export const SAMPLE_SALES_ROWS = [
   { date: daysAgo(1), region: 'South', channel: 'Partner', product: 'Helios ERP', revenue: 53900, units: 8, margin: 0.31 },
 ];
 
+export const SAMPLE_WEB_ROWS = [
+  { date: daysAgo(27), channel: 'Organic', device: 'Desktop', landing: '/pricing', sessions: 1840, bounce: 0.41, conversions: 62, revenue: 18600 },
+  { date: daysAgo(24), channel: 'Paid', device: 'Mobile', landing: '/home', sessions: 2620, bounce: 0.58, conversions: 41, revenue: 9840 },
+  { date: daysAgo(21), channel: 'Email', device: 'Desktop', landing: '/docs', sessions: 980, bounce: 0.29, conversions: 54, revenue: 12150 },
+  { date: daysAgo(18), channel: 'Organic', device: 'Mobile', landing: '/home', sessions: 2210, bounce: 0.47, conversions: 38, revenue: 7600 },
+  { date: daysAgo(15), channel: 'Referral', device: 'Desktop', landing: '/pricing', sessions: 740, bounce: 0.22, conversions: 71, revenue: 24850 },
+  { date: daysAgo(12), channel: 'Paid', device: 'Desktop', landing: '/pricing', sessions: 1680, bounce: 0.51, conversions: 29, revenue: 8700 },
+  { date: daysAgo(9), channel: 'Organic', device: 'Desktop', landing: '/docs', sessions: 1430, bounce: 0.33, conversions: 47, revenue: 9400 },
+  { date: daysAgo(6), channel: 'Email', device: 'Mobile', landing: '/home', sessions: 890, bounce: 0.36, conversions: 33, revenue: 5610 },
+  { date: daysAgo(3), channel: 'Referral', device: 'Mobile', landing: '/blog', sessions: 610, bounce: 0.44, conversions: 18, revenue: 3240 },
+  { date: daysAgo(1), channel: 'Paid', device: 'Desktop', landing: '/home', sessions: 1980, bounce: 0.55, conversions: 36, revenue: 7920 },
+];
+
+export const SAMPLE_HR_ROWS = [
+  { month: daysAgo(270), department: 'Engineering', location: 'Austin', headcount: 86, hires: 8, attrition: 0.04, offers: 12, acceptRate: 0.67 },
+  { month: daysAgo(240), department: 'Sales', location: 'New York', headcount: 41, hires: 5, attrition: 0.09, offers: 9, acceptRate: 0.55 },
+  { month: daysAgo(210), department: 'Engineering', location: 'Remote', headcount: 94, hires: 11, attrition: 0.03, offers: 14, acceptRate: 0.79 },
+  { month: daysAgo(180), department: 'People', location: 'Austin', headcount: 18, hires: 2, attrition: 0.06, offers: 3, acceptRate: 0.67 },
+  { month: daysAgo(150), department: 'Sales', location: 'London', headcount: 27, hires: 4, attrition: 0.11, offers: 8, acceptRate: 0.50 },
+  { month: daysAgo(120), department: 'Engineering', location: 'Austin', headcount: 101, hires: 9, attrition: 0.05, offers: 11, acceptRate: 0.82 },
+  { month: daysAgo(90), department: 'Design', location: 'Remote', headcount: 16, hires: 3, attrition: 0.06, offers: 4, acceptRate: 0.75 },
+  { month: daysAgo(60), department: 'Sales', location: 'New York', headcount: 44, hires: 6, attrition: 0.08, offers: 10, acceptRate: 0.60 },
+  { month: daysAgo(30), department: 'Engineering', location: 'Remote', headcount: 108, hires: 7, attrition: 0.02, offers: 9, acceptRate: 0.78 },
+  { month: daysAgo(5), department: 'People', location: 'London', headcount: 21, hires: 3, attrition: 0.05, offers: 4, acceptRate: 0.75 },
+];
+
 export const SAMPLE_SUPPORT_ROWS = [
   { opened: daysAgo(20), queue: 'Billing', priority: 'High', agent: 'Imani', hours: 6.5, csat: 4.2, tickets: 18 },
   { opened: daysAgo(17), queue: 'Onboarding', priority: 'Medium', agent: 'Noah', hours: 12.1, csat: 4.7, tickets: 26 },
@@ -34,7 +60,7 @@ function columnsFrom(rows: Record<string, unknown>[]) {
   const sample = rows[0] || {};
   return Object.keys(sample).map((name) => ({
     name,
-    type: typeof sample[name] === 'number' ? 'numeric' as const : /date|opened/i.test(name) ? 'date' as const : 'categorical' as const,
+    type: typeof sample[name] === 'number' ? 'numeric' as const : /date|opened|month/i.test(name) ? 'date' as const : 'categorical' as const,
   }));
 }
 
@@ -58,17 +84,49 @@ export function toDashboardDatasets(space: { datasets?: Array<{ id: string; name
   return [];
 }
 
-export function createSampleSpace(kind: 'sales' | 'support' = 'sales'): Space {
-  const rows = kind === 'sales' ? SAMPLE_SALES_ROWS : SAMPLE_SUPPORT_ROWS;
+const SAMPLE_KIND: Record<string, { rows: Record<string, unknown>[]; title: string; description: string; prompt: string; summary: string }> = {
+  sales: {
+    rows: SAMPLE_SALES_ROWS,
+    title: 'Northstar Revenue',
+    description: 'Inspect regional revenue mix and channel contribution.',
+    prompt: 'Build a board that makes regional revenue and channel mix obvious.',
+    summary: 'Sample commercial dataset covering regions, products, and channel revenue.',
+  },
+  support: {
+    rows: SAMPLE_SUPPORT_ROWS,
+    title: 'Care Queue',
+    description: 'See which queues consume hours and where CSAT slips.',
+    prompt: 'Show queue pressure, CSAT, and where to staff next.',
+    summary: 'Sample support dataset covering queues, agents, hours, and CSAT.',
+  },
+  web: {
+    rows: SAMPLE_WEB_ROWS,
+    title: 'Atlas Web Analytics',
+    description: 'Acquisition mix, bounce, and conversion quality.',
+    prompt: 'Show which channels convert and where bounce is wasting sessions.',
+    summary: 'Sample web analytics covering channel, device, sessions, bounce, and conversions.',
+  },
+  hr: {
+    rows: SAMPLE_HR_ROWS,
+    title: 'People Pulse',
+    description: 'Headcount, hiring, and attrition by department.',
+    prompt: 'Compare hiring health and attrition across departments and locations.',
+    summary: 'Sample HR dataset covering headcount, hires, attrition, and offer acceptance.',
+  },
+};
+
+export type SampleKind = keyof typeof SAMPLE_KIND;
+
+export function createSampleSpace(kind: SampleKind = 'sales'): Space {
+  const meta = SAMPLE_KIND[kind] || SAMPLE_KIND.sales;
+  const rows = meta.rows;
   const columns = columnsFrom(rows);
-  const title = kind === 'sales' ? 'Northstar Revenue' : 'Care Queue';
+  const title = meta.title;
   const now = new Date().toISOString();
   return {
     id: `sp-sample-${kind}-${Date.now()}`,
     title,
-    description: kind === 'sales'
-      ? 'Inspect regional revenue mix and channel contribution.'
-      : 'See which queues consume hours and where CSAT slips.',
+    description: meta.description,
     createdAt: now,
     updatedAt: now,
     isFavorite: true,
@@ -89,15 +147,11 @@ export function createSampleSpace(kind: 'sales' | 'support' = 'sales'): Space {
       embeddingsRecomputed: true,
       qualityScore: 96,
     }],
-    promptContext: kind === 'sales'
-      ? 'Build a board that makes regional revenue and channel mix obvious.'
-      : 'Show queue pressure, CSAT, and where to staff next.',
+    promptContext: meta.prompt,
     executionState: 'idle',
     generatedCode: '',
     executionTimeline: [],
-    aiSummary: kind === 'sales'
-      ? 'Sample commercial dataset covering regions, products, and channel revenue.'
-      : 'Sample support dataset covering queues, agents, hours, and CSAT.',
+    aiSummary: meta.summary,
     governanceLogs: [],
     securityEvents: [],
     chatMessages: [],

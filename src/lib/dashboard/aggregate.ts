@@ -1,4 +1,8 @@
-import type { Aggregation, DashboardDataset, DashboardWidget, FilterOp, WidgetFilter } from './types';
+import { classifyFields, looksLikeTime, metricFormat, periodChange, sparklineValues } from './insights';
+import { aggregateNumber, formatMetric } from './format';
+import type { DashboardDataset, DashboardWidget, FilterOp, WidgetFilter } from './types';
+
+export { aggregateNumber, formatMetric };
 
 export function applyFilter<T extends Record<string, unknown>>(rows: T[], filter?: WidgetFilter | null): T[] {
   if (!filter?.field || filter.value == null || filter.value === '') return rows;
@@ -36,29 +40,6 @@ export function matchesFilter(value: unknown, op: FilterOp, expected: string): b
     default:
       return true;
   }
-}
-
-export function aggregateNumber(values: number[], aggregation: Aggregation = 'sum'): number {
-  if (values.length === 0) return 0;
-  if (aggregation === 'count') return values.length;
-  if (aggregation === 'min') return Math.min(...values);
-  if (aggregation === 'max') return Math.max(...values);
-  const sum = values.reduce((acc, n) => acc + n, 0);
-  if (aggregation === 'avg') return sum / values.length;
-  return sum;
-}
-
-export function formatMetric(value: number, format?: 'number' | 'currency' | 'percent'): string {
-  if (!Number.isFinite(value)) return '—';
-  if (format === 'currency') {
-    if (Math.abs(value) >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-    if (Math.abs(value) >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-    return `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-  }
-  if (format === 'percent') return `${value.toFixed(1)}%`;
-  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
-  return Number.isInteger(value) ? value.toLocaleString() : value.toLocaleString(undefined, { maximumFractionDigits: 1 });
 }
 
 export function resolveDataset(datasets: DashboardDataset[], datasetId?: string): DashboardDataset | undefined {
@@ -102,8 +83,69 @@ export function prepareChartSeries(
     value: Number(aggregateNumber(values, yField ? aggregation : 'count').toFixed(2)),
   }));
 
-  series.sort((a, b) => Number(b.value) - Number(a.value));
+  const timeSeries = looksLikeTime(xField, series.map((row) => row.name));
+  if (timeSeries) {
+    series.sort((a, b) => Date.parse(String(a.name)) - Date.parse(String(b.name)));
+  } else if (widget.chartType === 'pie' || widget.chartType === 'donut' || widget.chartType === 'bar' || widget.chartType === 'horizontal-bar') {
+    series.sort((a, b) => Number(b.value) - Number(a.value));
+  }
+
   return series.slice(0, widget.chartType === 'pie' || widget.chartType === 'donut' ? 8 : 16);
+}
+
+export interface KpiStats {
+  value: string;
+  raw: number;
+  delta?: number;
+  trend?: string;
+  sparkline: number[];
+  format: 'number' | 'currency' | 'percent';
+}
+
+export function computeKpiStats(
+  datasets: DashboardDataset[],
+  widget: DashboardWidget,
+  extraFilters: WidgetFilter[] = [],
+): KpiStats {
+  const dataset = resolveDataset(datasets, widget.datasetId);
+  const format = widget.kpi?.format || metricFormat(widget.kpi?.field || widget.yField);
+  if (!dataset) {
+    return { value: widget.kpi?.value || '—', raw: 0, trend: widget.kpi?.trend, sparkline: widget.kpi?.sparkline || [], format };
+  }
+
+  let rows = dataset.data || [];
+  for (const filter of extraFilters) rows = applyFilter(rows, filter);
+  rows = applyFilter(rows, widget.filter);
+
+  const field = widget.kpi?.field || widget.yField;
+  const aggregation = widget.kpi?.aggregation || widget.aggregation || 'sum';
+  const values = field
+    ? rows.map((row) => Number(row[field])).filter((n) => !Number.isNaN(n))
+    : [];
+  const raw = field ? aggregateNumber(values, aggregation) : rows.length;
+  const fields = classifyFields(dataset);
+  const timeField = fields.time[0];
+  const change = field && timeField ? periodChange(rows, timeField, field) : null;
+  const delta = widget.kpi?.delta ?? change?.deltaPct;
+  const sparkline = widget.kpi?.sparkline?.length
+    ? widget.kpi.sparkline
+    : field
+      ? sparklineValues(rows, field, timeField)
+      : [];
+  const trend = widget.kpi?.trend && !/complete|coverage|healthy/i.test(widget.kpi.trend)
+    ? widget.kpi.trend
+    : delta != null
+      ? `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}% vs first half`
+      : undefined;
+
+  return {
+    value: formatMetric(raw, format),
+    raw,
+    delta,
+    trend,
+    sparkline,
+    format,
+  };
 }
 
 export function computeKpiValue(
@@ -112,19 +154,5 @@ export function computeKpiValue(
   extraFilters: WidgetFilter[] = [],
 ): string {
   if (widget.kpi?.value && !widget.kpi.field) return widget.kpi.value;
-  const dataset = resolveDataset(datasets, widget.datasetId);
-  if (!dataset) return widget.kpi?.value || '—';
-
-  let rows = dataset.data || [];
-  for (const filter of extraFilters) rows = applyFilter(rows, filter);
-  rows = applyFilter(rows, widget.filter);
-
-  const field = widget.kpi?.field || widget.yField;
-  const aggregation = widget.kpi?.aggregation || widget.aggregation || 'sum';
-  if (!field) return formatMetric(rows.length, 'number');
-
-  const values = rows
-    .map((row) => Number(row[field]))
-    .filter((n) => !Number.isNaN(n));
-  return formatMetric(aggregateNumber(values, aggregation), widget.kpi?.format);
+  return computeKpiStats(datasets, widget, extraFilters).value;
 }

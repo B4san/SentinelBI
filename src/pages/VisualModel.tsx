@@ -36,6 +36,7 @@ export function VisualModel() {
   const [prompt, setPrompt] = useState('');
   const [presetName, setPresetName] = useState('');
 
+  const appearance = useStore((state) => state.appearance);
   const datasets = useMemo(() => (activeSpace ? toDashboardDatasets(activeSpace) : []), [activeSpace]);
   const spec: DashboardSpec | null = useMemo(() => {
     if (!activeSpace) return null;
@@ -66,6 +67,7 @@ export function VisualModel() {
       widgetId,
       instruction,
       archetype,
+      mode: appearance.mode,
     });
     persist(result.spec);
     setStatus(result.source === 'ai' ? 'Generated from the configured provider.' : result.error || 'Used a data-fitted layout (no live model).');
@@ -252,8 +254,8 @@ export function VisualModel() {
 
           {status && <p className="text-sm text-[var(--muted-foreground)]">{status}</p>}
 
-          <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-4">
-            <div id="exportable-space">
+          <div className={`grid grid-cols-1 gap-4 ${editing ? 'xl:grid-cols-[minmax(0,1fr)_300px]' : ''}`}>
+            <div id="exportable-space" className="w-full min-w-0">
               <DashboardCanvas
                 spec={spec}
                 datasets={datasets}

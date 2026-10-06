@@ -1,4 +1,4 @@
-import { getPalette, FONT_FAMILIES, RADIUS_TOKENS } from './palettes';
+import { getPalette, FONT_FAMILIES, RADIUS_TOKENS, pickPaletteForMode } from './palettes';
 import {
   AGGREGATIONS,
   CHART_TYPES,
@@ -64,7 +64,9 @@ export function sanitizePalette(raw: unknown, fallbackId?: string): Palette {
     id: asString(rec.id, base.id),
     label: asString(rec.label, base.label),
     mode: rec.mode === 'dark' ? 'dark' : 'light',
-    background: isHexColor(asString(rec.background)) ? asString(rec.background) : base.background,
+    background: asString(rec.background) === 'transparent' || isHexColor(asString(rec.background))
+      ? asString(rec.background)
+      : base.background,
     surface: isHexColor(asString(rec.surface)) ? asString(rec.surface) : base.surface,
     text: isHexColor(asString(rec.text)) ? asString(rec.text) : base.text,
     muted: isHexColor(asString(rec.muted)) ? asString(rec.muted) : base.muted,
@@ -116,6 +118,11 @@ export function sanitizeWidget(raw: unknown, index: number, palette: Palette): D
     yField: asString(rec.yField || rec.yAxisField) || undefined,
     groupField: asString(rec.groupField) || undefined,
     sizeField: asString(rec.sizeField) || undefined,
+    role: (['hero', 'support', 'compare-a', 'compare-b', 'strip', 'featured'] as const).includes(
+      asString(rec.role) as 'hero',
+    )
+      ? (asString(rec.role) as DashboardWidget['role'])
+      : undefined,
     color: isHexColor(asString(rec.color)) ? asString(rec.color) : palette.chart[index % palette.chart.length],
     colors: Array.isArray(rec.colors) ? rec.colors.filter((c): c is string => typeof c === 'string' && isHexColor(c)) : undefined,
     aggregation,
@@ -137,12 +144,21 @@ export function sanitizeWidget(raw: unknown, index: number, palette: Palette): D
           )
             ? (asString((rec.kpi as Record<string, unknown>).format) as 'number' | 'currency' | 'percent')
             : undefined,
+          delta: Number.isFinite(Number((rec.kpi as Record<string, unknown>).delta))
+            ? Number((rec.kpi as Record<string, unknown>).delta)
+            : undefined,
+          sparkline: Array.isArray((rec.kpi as Record<string, unknown>).sparkline)
+            ? ((rec.kpi as Record<string, unknown>).sparkline as unknown[])
+                .map((n) => Number(n))
+                .filter((n) => Number.isFinite(n))
+            : undefined,
         }
       : type === 'kpi'
         ? { value: asString(rec.value, '—'), trend: asString(rec.trend) || undefined }
         : undefined,
     insight: rec.insight && typeof rec.insight === 'object'
       ? {
+          title: asString((rec.insight as Record<string, unknown>).title) || undefined,
           text: asString((rec.insight as Record<string, unknown>).text),
           tone: (['neutral', 'positive', 'warning'] as const).includes(
             asString((rec.insight as Record<string, unknown>).tone) as 'neutral',
@@ -320,7 +336,7 @@ export function applyThemeOverrides(
   const palette = overrides.paletteId
     ? getPalette(overrides.paletteId)
     : overrides.mode
-      ? getPalette(overrides.mode === 'dark' ? 'midnight' : spec.theme.palette.id)
+      ? pickPaletteForMode(spec.theme.palette.id, overrides.mode)
       : spec.theme.palette;
   return {
     ...spec,

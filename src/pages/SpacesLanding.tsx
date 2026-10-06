@@ -293,10 +293,16 @@ export function SpacesLanding() {
                )}
                <div className="flex flex-wrap gap-2">
                   <Button variant="outline" type="button" onClick={() => { const space = createSampleSpace('sales'); createSpace(space); navigate(`/space/${space.id}/visuals`); }} className="rounded-full">
-                    <Sparkles className="w-4 h-4 mr-2" /> Sample sales space
+                    <Sparkles className="w-4 h-4 mr-2" /> Sample sales
+                  </Button>
+                  <Button variant="outline" type="button" onClick={() => { const space = createSampleSpace('web'); createSpace(space); navigate(`/space/${space.id}/visuals`); }} className="rounded-full">
+                    Sample web analytics
+                  </Button>
+                  <Button variant="outline" type="button" onClick={() => { const space = createSampleSpace('hr'); createSpace(space); navigate(`/space/${space.id}/visuals`); }} className="rounded-full">
+                    Sample HR
                   </Button>
                   <Button variant="outline" type="button" onClick={() => { const space = createSampleSpace('support'); createSpace(space); navigate(`/space/${space.id}/visuals`); }} className="rounded-full">
-                    Sample support space
+                    Sample support
                   </Button>
                </div>
                <div className="space-y-4 pt-4">
