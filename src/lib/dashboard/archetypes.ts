@@ -84,12 +84,12 @@ function editorialSlots(kpiCount: number): ArchetypeSlot[] {
   const n = Math.max(0, kpiCount);
   const leftKpi = n > 0;
   const slots: ArchetypeSlot[] = [
-    { type: 'section', layout: { x: 0, y: 0, w: 12, h: 2 } },
-    { type: 'insight', layout: { x: 0, y: 2, w: 5, h: 2 }, featured: true, role: 'featured' },
-    { type: 'chart', layout: { x: 5, y: 2, w: 7, h: 6 }, featured: true, prefer: ['area', 'bar'] },
+    { type: 'section', layout: { x: 0, y: 0, w: 12, h: 1 } },
+    { type: 'insight', layout: { x: 0, y: 1, w: 5, h: 3 }, featured: true, role: 'featured' },
+    { type: 'chart', layout: { x: 5, y: 1, w: 7, h: 6 }, featured: true, prefer: ['area', 'line'] },
   ];
   if (leftKpi) {
-    slots.push({ type: 'kpi', layout: { x: 0, y: 4, w: 5, h: 4 }, role: 'hero' });
+    slots.push({ type: 'kpi', layout: { x: 0, y: 4, w: 5, h: 3 }, role: 'hero' });
   }
   const remaining = Math.max(0, n - (leftKpi ? 1 : 0));
   if (remaining > 0) {
@@ -226,7 +226,7 @@ function comparisonSlots(kpiCount: number): ArchetypeSlot[] {
 
 function storyArcSlots(kpiCount: number): ArchetypeSlot[] {
   return [
-    { type: 'section', layout: { x: 0, y: 0, w: 12, h: 2 } },
+    { type: 'section', layout: { x: 0, y: 0, w: 12, h: 1 } },
     { type: 'chart', layout: { x: 0, y: 2, w: 12, h: 6 }, featured: true, prefer: ['area', 'line'] },
     { type: 'insight', layout: { x: 0, y: 8, w: 12, h: 2 }, role: 'strip' },
     ...kpiRow(Math.min(3, Math.max(1, kpiCount)), 10, 2),

@@ -28,7 +28,7 @@ export function mapProviderError(opts: {
   }
   if (status === 429) {
     return new AIProviderError({
-      message: `${provider} rate-limited the request. Wait a moment and retry.`,
+      message: `${provider} rate-limited the request (429). Wait and retry.`,
       status,
       code: 'rate_limit',
       provider,

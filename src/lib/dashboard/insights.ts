@@ -19,11 +19,38 @@ const TIME_NAME = /(_date|_at|_time)$|^(date|time|day|week|month|year|opened|clo
 const MONEY_NAME = /rev|sales|amount|price|gmv|arr|mrr|acv|spend|cost|payroll|opex|ebitda|budget|cogs/i;
 const RATE_NAME = /(rate|margin|csat|nps|pct|percent|bounce|attrition|acceptRate)$/i;
 
+const FIELD_LABELS: Record<string, string> = {
+  ebitda: 'EBITDA',
+  cogs: 'COGS',
+  aov: 'AOV',
+  roas: 'ROAS',
+  cvr: 'CVR',
+  dso: 'DSO',
+  dso_days: 'DSO',
+  avg_session_seconds: 'Avg session duration',
+  bounce_rate: 'Bounce rate',
+  discount_rate: 'Discount rate',
+  gross_margin: 'Gross margin',
+  budget_opex: 'Budget opex',
+  ad_spend: 'Ad spend',
+  business_unit: 'Business unit',
+  cost_center: 'Cost center',
+};
+
 export function prettyField(name: string): string {
-  return String(name || '')
+  const raw = String(name || '');
+  const key = raw.toLowerCase().replace(/\s+/g, '_');
+  if (FIELD_LABELS[key]) return FIELD_LABELS[key];
+  return raw
     .replace(/[_-]+/g, ' ')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+    .replace(/\bebitda\b/ig, 'EBITDA')
+    .replace(/\bcogs\b/ig, 'COGS')
+    .replace(/\bdso\b/ig, 'DSO')
+    .replace(/\bavg session seconds\b/ig, 'Avg session duration')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .replace(/\bEbitda\b/g, 'EBITDA')
+    .replace(/\bCogs\b/g, 'COGS');
 }
 
 export function prettyValue(value: unknown): string {
@@ -190,8 +217,8 @@ export function analyzeDataset(dataset: DashboardDataset): Finding[] {
       findings.push({
         kind: 'top',
         tone: 'positive',
-        title: `${prettyValue(top.key)} leads on ${metric}`,
-        text: `${prettyValue(top.key)} generated ${formatMetric(top.value, format)} in ${metric}, ${(top.share * 100).toFixed(0)}% of the total — the strongest ${dim}.`,
+        title: `${prettyValue(top.key)} leads ${metric}`,
+        text: `${prettyValue(top.key)} generated ${formatMetric(top.value, format)} in ${metric}, ${(top.share * 100).toFixed(0)}% of the total. It is the strongest ${dim}.`,
       });
       if (bottom.value < top.value * 0.55) {
         findings.push({

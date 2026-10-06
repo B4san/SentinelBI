@@ -18,6 +18,7 @@ export function WidgetCard({
   onRegenerate,
   onPointClick,
   selected,
+  highlight,
 }: {
   spec: DashboardSpec;
   widget: DashboardWidget;
@@ -25,6 +26,7 @@ export function WidgetCard({
   filters?: WidgetFilter[];
   editing?: boolean;
   selected?: boolean;
+  highlight?: string;
   onSelect?: (id: string) => void;
   onRegenerate?: (id: string) => void;
   onPointClick?: (field: string, value: string) => void;
@@ -37,7 +39,7 @@ export function WidgetCard({
   return (
     <article
       onClick={() => onSelect?.(widget.id)}
-      className={`dash-card h-full w-full min-w-0 min-h-0 flex flex-col overflow-hidden border ${radius} ${selected ? 'ring-2 ring-offset-2' : ''} ${isSection ? 'dash-card-flush' : ''}`}
+      className={`dash-card h-full w-full min-w-0 min-h-0 flex flex-col ${isSection ? 'overflow-visible' : 'overflow-hidden'} border ${radius} ${selected ? 'ring-2 ring-offset-2' : ''} ${isSection ? 'dash-card-flush' : ''}`}
       style={{
         background: isSection ? 'transparent' : palette.surface,
         color: palette.text,
@@ -84,7 +86,7 @@ export function WidgetCard({
         </header>
       )}
       <div className={`min-h-0 min-w-0 flex-1 ${isKpi || isSection ? '' : 'px-3 pb-3 relative'}`}>
-        <WidgetBody spec={spec} widget={widget} datasets={datasets} filters={filters} editing={editing} onPointClick={onPointClick} />
+        <WidgetBody spec={spec} widget={widget} datasets={datasets} filters={filters} editing={editing} onPointClick={onPointClick} highlight={highlight} />
       </div>
     </article>
   );
@@ -117,12 +119,14 @@ function WidgetBody({
   filters,
   editing,
   onPointClick,
+  highlight,
 }: {
   spec: DashboardSpec;
   widget: DashboardWidget;
   datasets: DashboardDataset[];
   filters: WidgetFilter[];
   editing?: boolean;
+  highlight?: string;
   onPointClick?: (field: string, value: string) => void;
 }) {
   const palette = spec.theme.palette;
@@ -171,44 +175,37 @@ function WidgetBody({
   if (widget.type === 'insight') {
     const featured = widget.role === 'featured';
     const strip = widget.role === 'strip';
-    const compact = widget.layout.h <= 3;
     const tone = widget.insight?.tone || 'neutral';
     const bar = tone === 'warning' ? '#e11d48' : tone === 'positive' ? palette.accent : palette.muted;
+    const title = widget.insight?.title || widget.title || 'Finding';
+    const text = widget.insight?.text || widget.subtitle || '';
+    const same = title.replace(/[^a-z0-9]+/gi, ' ').trim().toLowerCase()
+      === text.replace(/[^a-z0-9]+/gi, ' ').trim().toLowerCase()
+      || text.toLowerCase().startsWith(title.toLowerCase().slice(0, 24));
+    const chips = text.split(/(?<=\.)\s+/).filter(Boolean).slice(0, 3);
     return (
       <div
-        className={`h-full flex ${strip ? 'flex-row items-center gap-4 px-4 py-3' : 'flex-col justify-start px-5 py-4'}`}
+        className={`h-auto min-h-0 flex ${strip ? 'flex-row items-start gap-4 px-4 py-3' : 'flex-col justify-start px-5 py-3'}`}
         style={{ borderLeft: featured ? `3px solid ${bar}` : undefined }}
       >
-        {(() => {
-          const title = widget.insight?.title || widget.title || 'Finding';
-          const text = widget.insight?.text || widget.subtitle || '';
-          const same = title.replace(/[^a-z0-9]+/gi, ' ').trim().toLowerCase()
-            === text.replace(/[^a-z0-9]+/gi, ' ').trim().toLowerCase()
-            || text.toLowerCase().startsWith(title.toLowerCase().slice(0, 24));
-          return (
-            <>
-              {!same && (
-                <p className="text-[12px] font-semibold shrink-0" style={{ color: palette.accent }}>
-                  {title}
-                </p>
-              )}
-              <p
-                className={`${featured ? (compact ? 'text-[15px] leading-snug mt-2' : 'text-[16px] leading-relaxed mt-3') : strip ? 'text-[13px] leading-snug' : 'text-[13px] leading-relaxed mt-2'}`}
-                style={{ color: palette.text }}
-              >
-                {text}
-              </p>
-            </>
-          );
-        })()}
+        {!same && (
+          <p className="text-[12px] font-semibold shrink-0 leading-snug" style={{ color: palette.accent }}>
+            {title}
+          </p>
+        )}
+        <div className={`${strip ? 'flex-1' : 'mt-2'} space-y-2`}>
+          {chips.map((chip) => (
+            <p key={chip} className="text-[13px] leading-snug" style={{ color: palette.text }}>{chip}</p>
+          ))}
+        </div>
       </div>
     );
   }
 
   if (widget.type === 'section') {
     return (
-      <div className="h-full flex flex-col justify-center px-1">
-        <h3 className={`${spec.theme.headingFont || spec.theme.fontFamily} text-xl font-semibold tracking-tight leading-snug`}>
+      <div className="h-full flex flex-col justify-end px-1 pb-1 overflow-visible">
+        <h3 className={`${spec.theme.headingFont || spec.theme.fontFamily} text-lg font-semibold tracking-tight leading-tight`}>
           {widget.title}
         </h3>
         {widget.subtitle && (
@@ -220,9 +217,10 @@ function WidgetBody({
 
   if (widget.type === 'table') {
     const model = prepareTableModel(datasets, widget, filters);
+    const compareOn = Boolean(widget.compare);
     return (
-      <div className="overflow-auto h-full text-[12px]">
-        <table className="w-full">
+      <div className="h-full text-[12px] overflow-hidden">
+        <table className="w-full table-fixed">
           <thead>
             <tr>
               {model.columns.map((c) => (
@@ -230,6 +228,9 @@ function WidgetBody({
                   {prettyField(c)}
                 </th>
               ))}
+              {compareOn && (
+                <th className="text-right font-semibold pb-2" style={{ color: palette.muted, background: palette.surface }}>Δ</th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -239,22 +240,31 @@ function WidgetBody({
               <tr key={i} className="border-t" style={{ borderColor: palette.border, fontWeight: isTotal ? 600 : 400 }}>
                 {model.columns.map((c) => {
                   const raw = model.rawRows[i]?.[c];
-                  const bar = model.barField === c && typeof raw === 'number';
+                  const bar = model.barField === c && typeof raw === 'number' && !isTotal;
                   const max = bar
-                    ? Math.max(...model.rawRows.map((r) => Number(r[c]) || 0), 1)
+                    ? Math.max(...model.rawRows.filter((_, idx) => String(model.rawRows[idx][model.columns[0]] || '').toLowerCase() !== 'total').map((r) => Number(r[c]) || 0), 1)
                     : 1;
+                  const pct = bar ? Math.max(0, Math.min(100, (Number(raw) / max) * 100)) : 0;
                   return (
-                    <td key={c} className="py-1.5 pr-3 tabular-nums relative">
-                      {bar && (
-                        <span
-                          className="absolute inset-y-1 left-0 rounded-sm opacity-20"
-                          style={{ width: `${(Number(raw) / max) * 100}%`, background: palette.accent }}
-                        />
+                    <td key={c} className="py-1.5 pr-3 tabular-nums">
+                      {bar ? (
+                        <div className="flex items-center gap-2">
+                          <span className="relative h-2 flex-1 rounded-full overflow-hidden" style={{ background: palette.border }}>
+                            <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${pct}%`, background: palette.accent, opacity: 0.7 }} />
+                          </span>
+                          <span className="w-[4.5rem] text-right shrink-0">{String(row[c] ?? '')}</span>
+                        </div>
+                      ) : (
+                        <span>{String(row[c] ?? '')}</span>
                       )}
-                      <span className="relative">{String(row[c] ?? '')}</span>
                     </td>
                   );
                 })}
+                {compareOn && (
+                  <td className="py-1.5 text-right tabular-nums" style={{ color: palette.muted }}>
+                    {typeof model.rawRows[i]?.__delta === 'number' ? formatMetric(Number(model.rawRows[i].__delta), 'percent') : '—'}
+                  </td>
+                )}
               </tr>
               );
             })}
@@ -266,7 +276,7 @@ function WidgetBody({
 
   return (
     <div className="h-full w-full min-h-0 min-w-0">
-      <ChartRenderer spec={spec} widget={widget} datasets={datasets} filters={filters} onPointClick={onPointClick} />
+      <ChartRenderer spec={spec} widget={widget} datasets={datasets} filters={filters} onPointClick={onPointClick} highlight={highlight} />
     </div>
   );
 }

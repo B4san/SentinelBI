@@ -27,12 +27,14 @@ export function ChartRenderer({
   datasets,
   filters = [],
   onPointClick,
+  highlight,
 }: {
   spec: DashboardSpec;
   widget: DashboardWidget;
   datasets: DashboardDataset[];
   filters?: DashboardSpec['filters'];
   height?: number;
+  highlight?: string;
   onPointClick?: (field: string, value: string) => void;
 }) {
   const palette = spec.theme.palette;
@@ -83,11 +85,10 @@ export function ChartRenderer({
     );
   }
 
-  const seriesFields = widget.series?.length
-    ? widget.series.map((s) => s.field)
-    : widget.compare
-      ? [yKey, '__compare']
-      : [yKey];
+  const seriesFields = [
+    ...(widget.series?.length ? widget.series.map((s) => s.field) : [yKey]),
+    ...(widget.compare && !widget.series?.some((s) => s.field === '__compare') ? ['__compare'] : []),
+  ].filter((field, i, arr) => arr.indexOf(field) === i);
 
   return (
     <div ref={ref} className="h-full w-full min-h-0">
@@ -103,6 +104,7 @@ export function ChartRenderer({
         width={w}
         height={h}
         onPointClick={onPointClick}
+        highlight={highlight}
       />
     </div>
   );
@@ -120,6 +122,7 @@ function Cartesian({
   width,
   height,
   onPointClick,
+  highlight,
 }: {
   data: Array<Record<string, string | number>>;
   type: string;
@@ -131,13 +134,16 @@ function Cartesian({
   widget: DashboardWidget;
   width: number;
   height: number;
+  highlight?: string;
   onPointClick?: (field: string, value: string) => void;
 }) {
-  const horizontal = type === 'horizontal-bar';
   const labels = data.map((d) => String(d.label || d.name || d[xKey]));
   const longest = labels.reduce((n, l) => Math.max(n, l.length), 0);
-  const left = horizontal ? Math.min(160, 12 + longest * 7) : 52;
-  const pad = { top: 14, right: 16, bottom: 32, left };
+  const forceHorizontal = type === 'horizontal-bar' || (type === 'bar' && longest > 14 && data.length <= 8);
+  const horizontal = forceHorizontal;
+  const left = horizontal ? Math.min(168, 14 + longest * 7) : 56;
+  const rightAxis = seriesFields.some((f) => f !== yKey && f !== '__compare' && widget.series?.find((s) => s.field === f && (s.axis === 'right' || s.style === 'line' || /rate|margin|pct/i.test(f))));
+  const pad = { top: 18, right: rightAxis ? 48 : 28, bottom: horizontal ? 16 : 40, left };
   const innerW = Math.max(40, width - pad.left - pad.right);
   const innerH = Math.max(40, height - pad.top - pad.bottom);
   const numeric = data.map((d) => Number(d[yKey] ?? d.value));
@@ -145,7 +151,16 @@ function Cartesian({
   const yMin = Math.min(0, ...numeric);
   const n = data.length;
   const step = innerW / Math.max(n, 1);
-  const fmt = looksLikeDuration(yKey) ? 'duration' : metricFormat(yKey);
+  const share = data.some((d) => d.__share != null);
+  const slope = data.some((d) => d.__start != null);
+  const fmt = share ? 'percent' : looksLikeDuration(yKey) ? 'duration' : metricFormat(yKey);
+  const categoricalLegend = Boolean(widget.groupField) || (seriesFields.filter((f) => f !== '__compare').length > 1 && !rightAxis);
+  const barColor = (i: number, name: string) => {
+    const selected = highlight && name === highlight;
+    const base = categoricalLegend ? (palette.chart[i % palette.chart.length] || color) : color;
+    if (highlight && !selected) return `${base}66`;
+    return base;
+  };
 
   if (type === 'scatter' || type === 'bubble') {
     const xs = data.map((d) => Number(d[xKey]));
@@ -164,18 +179,24 @@ function Cartesian({
     );
   }
 
-  if (type === 'line' || type === 'stepped-line' || type === 'area' || type === 'stacked-area') {
-    const paths = seriesFields.map((field, s) => {
+  if (type === 'line' || type === 'stepped-line' || type === 'area' || type === 'stacked-area' || (rightAxis && type === 'bar')) {
+    const overlay = seriesFields.filter((f) => f !== yKey);
+    const paths = (type === 'bar' ? overlay : seriesFields).map((field, s) => {
+      const right = field !== yKey && field !== '__compare' && (/rate|margin|pct/i.test(field) || widget.series?.find((x) => x.field === field)?.axis === 'right');
+      const vals = data.map((d) => Number(d[field] ?? 0));
+      const max = right ? Math.max(...vals, 0) * 1.12 || 1 : yMax;
+      const min = right ? Math.min(0, ...vals) : yMin;
       const pts = data.map((d, i) => {
         const x = pad.left + step * i + step / 2;
-        const y = pad.top + innerH - ((Number(d[field] ?? 0) - yMin) / (yMax - yMin || 1)) * innerH;
+        const y = pad.top + innerH - ((Number(d[field] ?? 0) - min) / (max - min || 1)) * innerH;
         return { x, y };
       });
       return {
         field,
-        color: widget.series?.[s]?.color || palette.chart[s % palette.chart.length],
+        color: field === '__compare' ? palette.muted : widget.series?.[s]?.color || (s === 0 ? color : palette.chart[s % palette.chart.length]),
         pts,
         dashed: widget.series?.[s]?.style === 'dashed' || field === '__compare',
+        right,
       };
     });
     const first = paths[0];
@@ -195,9 +216,44 @@ function Cartesian({
         {gridY(pad, innerW, innerH, yMin, yMax, palette, fmt)}
         {xTicks(data, pad, innerW, height, palette)}
         {type.includes('area') && <path d={area} fill={`url(#${areaId})`} />}
+        {type === 'bar' && data.map((d, i) => {
+          const value = Number(d[yKey] ?? d.value);
+          const barW = Math.min(36, step * 0.55);
+          const x = pad.left + step * i + (step - barW) / 2;
+          const bh = ((value - yMin) / (yMax - yMin || 1)) * innerH;
+          const name = String(d.name || d[xKey]);
+          return (
+            <g key={`bar-${i}`} onClick={() => onPointClick?.(xKey, name)}>
+              <rect x={x} y={pad.top + innerH - bh} width={barW} height={Math.max(1, bh)} rx={4} fill={barColor(i, name)} />
+            </g>
+          );
+        })}
         {paths.map((p) => (
           <polyline key={p.field} fill="none" stroke={p.color} strokeWidth={2} strokeDasharray={p.dashed ? '6 5' : undefined} points={dLine(p.pts)} />
         ))}
+      </svg>
+    );
+  }
+
+  if (slope) {
+    const mid = pad.left + innerW * 0.55;
+    return (
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="100%" className="dash-plot" role="img">
+        {data.map((d, i) => {
+          const start = Number(d.__start ?? 0);
+          const end = Number(d.__end ?? d.value);
+          const max = Math.max(...data.map((row) => Math.max(Number(row.__start ?? 0), Number(row.__end ?? 0))), 1);
+          const y1 = pad.top + innerH - (start / max) * innerH;
+          const y2 = pad.top + innerH - (end / max) * innerH;
+          return (
+            <g key={i}>
+              <line x1={pad.left + 24} x2={mid} y1={y1} y2={y2} stroke={palette.chart[i % palette.chart.length]} strokeWidth={2} />
+              <circle cx={pad.left + 24} cy={y1} r={3} fill={palette.chart[i % palette.chart.length]} />
+              <circle cx={mid} cy={y2} r={3} fill={palette.chart[i % palette.chart.length]} />
+              <text x={mid + 8} y={y2 + 4} fontSize="11" fill={palette.text}>{labels[i]} {formatMetric(Number(d.value), 'percent')}</text>
+            </g>
+          );
+        })}
       </svg>
     );
   }
@@ -207,14 +263,15 @@ function Cartesian({
       {horizontal ? null : gridY(pad, innerW, innerH, yMin, yMax, palette, fmt)}
       {data.map((d, i) => {
         const value = Number(d[yKey] ?? d.value);
+        const name = String(d.name || d[xKey]);
         if (horizontal) {
           const barH = Math.min(22, innerH / n - 6);
           const y = pad.top + (innerH / n) * i + (innerH / n - barH) / 2;
           const bw = ((value - yMin) / (yMax - yMin || 1)) * innerW;
           return (
-            <g key={i} onClick={() => onPointClick?.(xKey, String(d.name || d[xKey]))}>
-              <text x={pad.left - 8} y={y + barH / 2 + 4} textAnchor="end" fontSize="12" fill={palette.muted}>{clip(labels[i], 18)}</text>
-              <rect x={pad.left} y={y} width={Math.max(1, bw)} height={barH} rx={4} fill={color} />
+            <g key={i} onClick={() => onPointClick?.(xKey, name)}>
+              <text x={pad.left - 8} y={y + barH / 2 + 4} textAnchor="end" fontSize="12" fill={palette.muted}>{labels[i]}</text>
+              <rect x={pad.left} y={y} width={Math.max(1, bw)} height={barH} rx={4} fill={barColor(i, name)} />
               <text x={pad.left + bw + 6} y={y + barH / 2 + 4} fontSize="12" fill={palette.text}>{formatMetric(value, fmt)}</text>
             </g>
           );
@@ -223,9 +280,12 @@ function Cartesian({
         const x = pad.left + step * i + (step - barW) / 2;
         const bh = ((value - yMin) / (yMax - yMin || 1)) * innerH;
         return (
-          <g key={i} onClick={() => onPointClick?.(xKey, String(d.name || d[xKey]))}>
-            <rect x={x} y={pad.top + innerH - bh} width={barW} height={Math.max(1, bh)} rx={4} fill={palette.chart[i % palette.chart.length] || color} />
-            <text x={x + barW / 2} y={height - 10} textAnchor="middle" fontSize="11" fill={palette.muted}>{clip(labels[i], 12)}</text>
+          <g key={i} onClick={() => onPointClick?.(xKey, name)}>
+            <rect x={x} y={pad.top + innerH - bh} width={barW} height={Math.max(1, bh)} rx={4} fill={barColor(i, name)} />
+            {n <= 8 && (
+              <text x={x + barW / 2} y={pad.top + innerH - bh - 6} textAnchor="middle" fontSize="11" fill={palette.text}>{formatMetric(value, fmt)}</text>
+            )}
+            <text x={x + barW / 2} y={height - 8} textAnchor={i === n - 1 ? 'end' : 'middle'} fontSize="11" fill={palette.muted}>{clip(labels[i], 14)}</text>
           </g>
         );
       })}
@@ -269,7 +329,7 @@ function xTicks(
     if (i % step !== 0 && i !== data.length - 1) return null;
     const x = pad.left + (innerW * i) / Math.max(data.length - 1, 1);
     return (
-      <text key={i} x={x} y={height - 10} textAnchor="middle" fontSize="11" fill={palette.muted}>
+      <text key={i} x={x} y={height - 8} textAnchor={i === data.length - 1 ? 'end' : i === 0 ? 'start' : 'middle'} fontSize="11" fill={palette.muted}>
         {prettyTick(String(d.label || d.name || ''))}
       </text>
     );

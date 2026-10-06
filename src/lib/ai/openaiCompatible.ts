@@ -2,12 +2,17 @@ import { mapProviderError } from './errors';
 import type { ModelInfo, ResolvedProviderConfig } from './types';
 
 export const GENERATE_TIMEOUT_MS = 240_000;
+export const OVERALL_GENERATE_DEADLINE_MS = 300_000;
 
 export class GenerationTimeoutError extends Error {
   status = 504;
-  constructor(message = 'Dashboard generation timed out after 240s.') {
+  step?: string;
+  elapsedMs?: number;
+  constructor(message = 'Dashboard generation timed out after 240s.', extras?: { step?: string; elapsedMs?: number }) {
     super(message);
     this.name = 'GenerationTimeoutError';
+    this.step = extras?.step;
+    this.elapsedMs = extras?.elapsedMs;
   }
 }
 
@@ -27,6 +32,7 @@ export function buildChatBody(opts: {
   temperature?: number;
   maxTokens?: number;
   jsonSchema?: Record<string, unknown>;
+  reasoning?: { effort?: 'low' | 'medium' | 'high'; exclude?: boolean };
 }): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: opts.model,
@@ -42,6 +48,9 @@ export function buildChatBody(opts: {
     };
   } else if (opts.json) {
     body.response_format = { type: 'json_object' };
+  }
+  if (opts.reasoning) {
+    body.reasoning = opts.reasoning;
   }
   return body;
 }
@@ -95,6 +104,25 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function headerGet(headers: unknown, name: string): string | undefined {
+  if (!headers) return undefined;
+  if (typeof (headers as Headers).get === 'function') {
+    return (headers as Headers).get(name) || undefined;
+  }
+  const rec = headers as Record<string, string>;
+  return rec[name] || rec[name.toLowerCase()];
+}
+
+export function parseRetryAfterMs(headers: unknown, fallback = 5_000): number {
+  const raw = headerGet(headers, 'retry-after') || headerGet(headers, 'Retry-After');
+  if (!raw) return fallback;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.max(0, seconds * 1000);
+  const when = Date.parse(raw);
+  if (!Number.isNaN(when)) return Math.max(0, when - Date.now());
+  return fallback;
+}
+
 export type ResponseFormatStep = 'json_schema' | 'json_object' | 'plain';
 
 export interface OpenaiGenerateOpts {
@@ -106,6 +134,15 @@ export interface OpenaiGenerateOpts {
   retries?: number;
   format?: ResponseFormatStep;
   fetchImpl?: typeof fetch;
+  reasoning?: { effort?: 'low' | 'medium' | 'high'; exclude?: boolean };
+  rateLimitWaitMs?: number;
+}
+
+export interface ChatResult {
+  status: number;
+  raw: string;
+  payload: unknown;
+  headers?: unknown;
 }
 
 async function postChat(
@@ -113,9 +150,9 @@ async function postChat(
   messages: { role: string; content: string }[],
   opts: OpenaiGenerateOpts,
   format: ResponseFormatStep,
-): Promise<{ status: number; raw: string; payload: unknown }> {
+): Promise<ChatResult> {
   const controller = new AbortController();
-  const timeoutMs = opts.timeoutMs ?? GENERATE_TIMEOUT_MS;
+  const timeoutMs = Math.max(250, opts.timeoutMs ?? GENERATE_TIMEOUT_MS);
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const fetchImpl = opts.fetchImpl || fetch;
   const jsonSchema = format === 'json_schema' ? opts.jsonSchema : undefined;
@@ -123,6 +160,10 @@ async function postChat(
   const bodyMessages = format === 'plain'
     ? [...messages, { role: 'system', content: 'Return only JSON. No markdown, no prose.' }]
     : messages;
+  const reasoning = opts.reasoning
+    || (config.provider === 'openrouter' || /reason|r1|thinking/i.test(config.model)
+      ? { effort: 'low' as const }
+      : undefined);
   try {
     const res = await fetchImpl(chatCompletionsUrl(config.baseUrl), {
       method: 'POST',
@@ -136,6 +177,7 @@ async function postChat(
           temperature: opts.temperature,
           maxTokens: opts.maxTokens,
           jsonSchema,
+          reasoning,
         }),
       ),
       signal: controller.signal,
@@ -147,10 +189,12 @@ async function postChat(
     } catch {
       payload = raw;
     }
-    return { status: res.status, raw, payload };
+    return { status: res.status, raw, payload, headers: res.headers };
   } catch (cause) {
     if (cause instanceof Error && cause.name === 'AbortError') {
-      throw new GenerationTimeoutError();
+      throw new GenerationTimeoutError(`Dashboard generation timed out after ${Math.round(timeoutMs / 1000)}s.`, {
+        elapsedMs: timeoutMs,
+      });
     }
     throw mapProviderError({ cause, provider: config.provider, status: 0 });
   } finally {
@@ -168,11 +212,41 @@ export async function openaiGenerate(
   let lastStatus = 0;
   let lastRaw = '';
   let lastError = '';
+  let waitedOn429 = false;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     const result = await postChat(config, messages, opts, format);
     lastStatus = result.status;
     lastRaw = result.raw;
+
+    if (result.status === 429) {
+      lastError = chatPayloadError(result.payload) || result.raw || '429 rate limited';
+      if (!waitedOn429) {
+        waitedOn429 = true;
+        await sleep(parseRetryAfterMs(result.headers, opts.rateLimitWaitMs ?? 5_000));
+        continue;
+      }
+      throw mapProviderError({ status: 429, body: lastError, provider: config.provider });
+    }
+
+    if (result.status === 400 || result.status === 422) {
+      const detail = chatPayloadError(result.payload) || result.raw;
+      throw mapProviderError({ status: result.status, body: detail, provider: config.provider });
+    }
+
+    if (result.status >= 500) {
+      lastError = chatPayloadError(result.payload) || result.raw || `${result.status}`;
+      if (attempt < retries) {
+        await sleep(400 * (attempt + 1));
+        continue;
+      }
+      throw mapProviderError({ status: result.status, body: lastError, provider: config.provider });
+    }
+
+    if (result.status && result.status >= 400) {
+      throw mapProviderError({ status: result.status, body: result.raw, provider: config.provider });
+    }
+
     const upstream = chatPayloadError(result.payload);
     if (upstream) {
       lastError = upstream;
@@ -182,9 +256,7 @@ export async function openaiGenerate(
       }
       throw mapProviderError({ status: 503, body: upstream, provider: config.provider });
     }
-    if (!result.status || result.status >= 400) {
-      throw mapProviderError({ status: result.status, body: result.raw, provider: config.provider });
-    }
+
     if (typeof result.payload === 'object') {
       const text = extractChatText(result.payload);
       if (text) return text;
@@ -268,10 +340,27 @@ export async function openaiStream(
   return full;
 }
 
-export async function openaiListModels(config: ResolvedProviderConfig): Promise<ModelInfo[]> {
+const structuredOutputCache = new Map<string, { at: number; supported: boolean }>();
+
+function rowSupportsStructuredOutputs(row: Record<string, unknown>): boolean {
+  if (row.structured_outputs === true || row.supports_structured_outputs === true) return true;
+  const params = row.supported_parameters;
+  if (Array.isArray(params) && params.some((p) => /structured_outputs|response_format/i.test(String(p)))) return true;
+  const top = row.top_provider;
+  if (top && typeof top === 'object' && (top as { is_moderated?: boolean }).is_moderated != null) {
+    const supported = (top as { supported_parameters?: unknown }).supported_parameters;
+    if (Array.isArray(supported) && supported.some((p) => /structured_outputs/i.test(String(p)))) return true;
+  }
+  return false;
+}
+
+export async function openaiListModels(
+  config: ResolvedProviderConfig,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ModelInfo[]> {
   let res: Response;
   try {
-    res = await fetch(modelsUrl(config.baseUrl), {
+    res = await fetchImpl(modelsUrl(config.baseUrl), {
       method: 'GET',
       headers: authHeaders(config),
     });
@@ -280,22 +369,46 @@ export async function openaiListModels(config: ResolvedProviderConfig): Promise<
   }
 
   const raw = await res.text();
-  if (!res.ok) {
+  if ((res as Response).ok === false || (res.status && res.status >= 400)) {
     throw mapProviderError({ status: res.status, body: raw, provider: config.provider });
   }
 
   try {
-    const payload = JSON.parse(raw) as { data?: Array<{ id?: string; owned_by?: string }> };
+    const payload = JSON.parse(raw) as { data?: Array<Record<string, unknown>> };
     const rows = Array.isArray(payload.data) ? payload.data : [];
     return rows
       .map((row) => ({
         id: String(row.id || ''),
         label: String(row.id || ''),
-        ownedBy: row.owned_by,
+        ownedBy: typeof row.owned_by === 'string' ? row.owned_by : undefined,
+        structuredOutputs: rowSupportsStructuredOutputs(row),
       }))
       .filter((row) => row.id)
       .sort((a, b) => a.id.localeCompare(b.id));
   } catch {
     return [];
   }
+}
+
+export async function modelSupportsStructuredOutputs(
+  config: ResolvedProviderConfig,
+  fetchImpl: typeof fetch = fetch,
+): Promise<boolean> {
+  const key = `${config.provider}:${config.baseUrl}:${config.model}`;
+  const cached = structuredOutputCache.get(key);
+  if (cached && Date.now() - cached.at < 10 * 60_000) return cached.supported;
+  try {
+    const models = await openaiListModels(config, fetchImpl);
+    const match = models.find((m) => m.id === config.model || m.id.endsWith(`/${config.model}`));
+    const supported = Boolean(match?.structuredOutputs);
+    structuredOutputCache.set(key, { at: Date.now(), supported });
+    return supported;
+  } catch {
+    structuredOutputCache.set(key, { at: Date.now(), supported: false });
+    return false;
+  }
+}
+
+export function clearStructuredOutputCache(): void {
+  structuredOutputCache.clear();
 }

@@ -93,6 +93,16 @@ export function repairCatalogWidgets(spec: import('./types').DashboardSpec, data
         next.chartType = 'bar';
         next.componentId = 'arc.bar-chart';
       }
+      if (!next.series?.length) {
+        const mentioned = [...names].filter((n) => new RegExp(n.replace(/_/g, '[-_ ]'), 'i').test(next.title));
+        const extras = mentioned.filter((n) => n !== next.yField && n !== next.xField);
+        if (/&| vs |overlay/i.test(next.title) && extras[0]) {
+          next.series = [
+            { field: next.yField || extras[0], style: 'bar' },
+            { field: extras[0], style: 'line', axis: 'right' },
+          ];
+        }
+      }
       if (next.componentId === 'sbi.small-multiples' && !next.groupField) {
         const by = next.title.match(/by\s+([a-z0-9_ ]+)/i);
         const facet = by?.[1]?.trim().replace(/\s+/g, '_');

@@ -1,5 +1,4 @@
 import type { Request, Response } from 'express';
-import { GenerationTimeoutError } from '../src/lib/ai/openaiCompatible';
 import { generateDashboardOnServer } from '../src/lib/dashboard/generate';
 import { validateDashboardSpec } from '../src/lib/dashboard/validate';
 import { finalizeDashboardSpec } from '../src/lib/dashboard/finalize';
@@ -58,12 +57,10 @@ export async function generateDashboardHandler(
       source: result.source,
       error: result.error,
       fallbackReason: result.fallbackReason,
+      attempts: result.attempts,
       html,
     });
   } catch (error) {
-    if (error instanceof GenerationTimeoutError) {
-      return res.status(504).json({ error: error.message, fallbackReason: error.message });
-    }
     return res.status(500).json({
       error: error instanceof Error ? error.message : 'Dashboard generation failed',
     });

@@ -42,11 +42,15 @@ function rowsFor(datasets: DashboardDataset[], widget: DashboardWidget, extra: W
   return applyFilter(rows, widget.filter);
 }
 
+function shouldForceSnap(title: string): boolean {
+  return /\baov\b|average order|gross margin|discount rate|avg(?:erage)? discount|bounce rate|opex vs budget/i.test(title);
+}
+
 function applySnap(dataset: DashboardDataset | undefined, widget: DashboardWidget): DashboardWidget {
   if (!dataset) return widget;
   const snapped = snapCandidate(widget.title, dataset);
   if (!snapped) return widget;
-  if (snapped.measure && (!widget.measure || isDegenerateRatio(widget.measure as DerivedMeasure))) {
+  if (snapped.measure && (!widget.measure || (isDerivedMeasure(widget.measure) && isDegenerateRatio(widget.measure)) || shouldForceSnap(widget.title))) {
     return { ...widget, measure: snapped.measure };
   }
   if (snapped.field && !isDerivedMeasure(widget.measure)) {
@@ -220,16 +224,28 @@ export function attachComputedFacts(spec: DashboardSpec, datasets: DashboardData
 }
 
 const NUMBERISH = /[-+]?\d[\d,]*(?:\.\d+)?%?|\$[\d,.]+[KMB]?|\d+(?:\.\d+)?×/g;
+const NAMED = /\b(APAC|LATAM|EMEA|North|South|Web|Partner|Direct|Enterprise|SMB|Helios(?:\s+ERP)?|Atlas(?:\s+CRM)?|Nimbus(?:\s+Analytics)?|Orbit(?:\s+Support)?|Cloud|Hardware|Apps|Services|Paid|Organic|Email|Social|Referral|Desktop|Mobile|Tablet)\b/g;
+
+export interface BoardFacts {
+  tokens: string[];
+  sentences: string[];
+  entityRanks: Record<string, { key: string; value: number; share: number; delta?: number }[]>;
+  directions: Record<string, number>;
+}
 
 export function extractClaimedNumbers(text: string): string[] {
   return (text.match(NUMBERISH) || []).map((n) => n.replace(/,/g, ''));
+}
+
+export function extractNamedEntities(text: string): string[] {
+  return (text.match(NAMED) || []).map((n) => n.replace(/\s+/g, ' '));
 }
 
 export function numbersMatchFacts(text: string, facts: string[]): boolean {
   const claimed = extractClaimedNumbers(text);
   if (claimed.length === 0) return true;
   const normalizedFacts = facts.map(normalizeNumberToken);
-  return claimed.every((token) => normalizedFacts.some((fact) => roughlyEqual(normalizeNumberToken(token), fact)));
+  return claimed.every((token) => normalizedFacts.some((fact) => roughlyEqual(normalizeNumberToken(token), fact, /%/.test(token) ? 2 : undefined)));
 }
 
 function normalizeNumberToken(token: string): number | null {
@@ -239,22 +255,119 @@ function normalizeNumberToken(token: string): number | null {
   return Number.isFinite(n) ? n * mult : null;
 }
 
-function roughlyEqual(a: number | null, b: number | null): boolean {
+function roughlyEqual(a: number | null, b: number | null, absTol?: number): boolean {
   if (a == null || b == null) return false;
   const scale = Math.max(1, Math.abs(b));
+  if (absTol != null) {
+    const tol = Math.abs(b) >= 8 ? absTol : 0.55;
+    return Math.abs(a - b) <= tol;
+  }
   return Math.abs(a - b) / scale < 0.15 || Math.abs(a - b) < 0.6;
 }
 
 export function factStrings(datasets: DashboardDataset[], spec: DashboardSpec): string[] {
-  const facts: string[] = [];
+  return collectBoardFacts(datasets, spec).tokens;
+}
+
+export function collectBoardFacts(datasets: DashboardDataset[], spec: DashboardSpec): BoardFacts {
+  const tokens: string[] = [];
+  const entityRanks: BoardFacts['entityRanks'] = {};
+  const directions: Record<string, number> = {};
   for (const widget of spec.widgets) {
     if (widget.type === 'kpi') {
       const stats = computeWidgetKpi(datasets, widget);
-      facts.push(stats.value);
-      if (stats.delta != null) facts.push(`${stats.delta.toFixed(1)}%`);
+      tokens.push(stats.value);
+      if (stats.delta != null) tokens.push(`${stats.delta.toFixed(1)}%`);
     }
   }
-  return facts;
+  const dataset = datasets[0];
+  if (dataset) {
+    const fields = classifyFields(dataset);
+    const measure = fields.measures.find((name) => /rev|session/i.test(name)) || fields.measures[0];
+    const timeField = fields.time[0];
+    for (const dim of fields.dimensions) {
+      if (!measure) continue;
+      const ranked = rankedGroups(dataset.data || [], dim, measure);
+      entityRanks[dim] = ranked;
+      if (ranked[0]) tokens.push(`${(ranked[0].share * 100).toFixed(0)}%`);
+      if (timeField) {
+        const datedAll = (dataset.data || [])
+          .map((row) => parseLocalDate(row[timeField])?.getTime() ?? NaN)
+          .filter((t) => !Number.isNaN(t))
+          .sort((a, b) => a - b);
+        const midT = datedAll[Math.floor(datedAll.length / 2)] || 0;
+        entityRanks[`${dim}:delta`] = ranked.map((row) => {
+          const subset = (dataset.data || []).filter((r) => String(r[dim]) === row.key);
+          const first = subset.filter((r) => (parseLocalDate(r[timeField])?.getTime() ?? 0) < midT);
+          const second = subset.filter((r) => (parseLocalDate(r[timeField])?.getTime() ?? 0) >= midT);
+          const a = first.reduce((acc, r) => acc + Number(r[measure] || 0), 0);
+          const b = second.reduce((acc, r) => acc + Number(r[measure] || 0), 0);
+          const deltaPct = a === 0 ? null : ((b - a) / Math.abs(a)) * 100;
+          if (deltaPct != null) directions[row.key] = deltaPct;
+          return { ...row, delta: deltaPct ?? undefined };
+        });
+      }
+    }
+    if (measure && timeField) {
+      const change = periodChange(dataset.data || [], timeField, measure);
+      if (change) {
+        tokens.push(`${change.deltaPct.toFixed(1)}%`);
+        directions.__overall = change.deltaPct;
+      }
+    }
+    const gmField = fields.measures.find((name) => /gross_margin|gross margin/i.test(name));
+    const revenueField = fields.measures.find((name) => /revenue|rev/i.test(name));
+    if (gmField && revenueField && timeField) {
+      const dated = (dataset.data || [])
+        .map((row) => ({ t: parseLocalDate(row[timeField])?.getTime() ?? NaN, row }))
+        .filter((row) => !Number.isNaN(row.t))
+        .sort((a, b) => a.t - b.t);
+      if (dated.length >= 4) {
+        const mid = Math.floor(dated.length / 2);
+        const first = computeDerivedValue(dated.slice(0, mid).map((r) => r.row), {
+          kind: 'weighted',
+          numerator: { field: gmField, agg: 'avg' },
+          denominator: { field: revenueField, agg: 'sum' },
+          format: 'percent',
+        });
+        const second = computeDerivedValue(dated.slice(mid).map((r) => r.row), {
+          kind: 'weighted',
+          numerator: { field: gmField, agg: 'avg' },
+          denominator: { field: revenueField, agg: 'sum' },
+          format: 'percent',
+        });
+        const scale = Math.abs(first) <= 1.5 && Math.abs(second) <= 1.5 ? 100 : 1;
+        directions.__gm = (second - first) * scale;
+        tokens.push(`${directions.__gm.toFixed(1)}%`);
+        tokens.push(`${(second * (Math.abs(second) <= 1.5 ? 100 : 1)).toFixed(1)}%`);
+      }
+    }
+    if (fields.dimensions.length >= 2 && measure) {
+      const combos = comboShare(dataset.data || [], fields.dimensions[0], fields.dimensions[1], measure);
+      if (combos.topShare != null) tokens.push(`${(combos.topShare * 100).toFixed(0)}%`);
+    }
+  }
+  return { tokens, sentences: buildFactSentences(datasets, spec), entityRanks, directions };
+}
+
+function comboShare(
+  rows: Record<string, unknown>[],
+  a: string,
+  b: string,
+  measure: string,
+): { topShare: number; count: number } {
+  const map = new Map<string, number>();
+  let total = 0;
+  for (const row of rows) {
+    const key = `${row[a]}|${row[b]}`;
+    const n = Number(row[measure]);
+    if (Number.isNaN(n)) continue;
+    map.set(key, (map.get(key) || 0) + n);
+    total += n;
+  }
+  const ranked = [...map.values()].sort((x, y) => y - x);
+  const top = ranked.slice(0, 10).reduce((acc, n) => acc + n, 0);
+  return { topShare: total ? top / total : 0, count: ranked.length };
 }
 
 export function buildFactSentences(datasets: DashboardDataset[], spec: DashboardSpec): string[] {
@@ -288,16 +401,59 @@ function neverMidWord(text: string, max = 220): string {
   const clean = text.replace(/\s+/g, ' ').trim();
   if (clean.length <= max) return clean;
   const slice = clean.slice(0, max);
-  const cut = slice.lastIndexOf(' ');
-  return `${(cut > 40 ? slice.slice(0, cut) : slice).replace(/[,\s]+$/, '')}.`;
+  const cut = Math.max(slice.lastIndexOf('. '), slice.lastIndexOf('; '), slice.lastIndexOf(', '), slice.lastIndexOf(' '));
+  return `${(cut > 24 ? slice.slice(0, cut) : slice).replace(/[,\s—–-]+$/, '')}.`;
+}
+
+export function shortInsightTitle(text: string, max = 60): string {
+  const clean = text.replace(/\s+/g, ' ').trim().replace(/^["']|["']$/g, '');
+  const clause = clean.split(/\s+[—–-]\s+|:\s+/)[0] || clean;
+  let title = clause.replace(/\.$/, '');
+  if (title.length > max) {
+    const slice = title.slice(0, max);
+    const cut = Math.max(slice.lastIndexOf(', '), slice.lastIndexOf(' '));
+    title = (cut > 20 ? slice.slice(0, cut) : slice).trim();
+  }
+  title = title.replace(/\b(the|a|an|and|of|for|with|to|—|–|-)$/i, '').trim();
+  if (!title || /^(the|a|an)$/i.test(title)) title = 'Key finding';
+  return title;
+}
+
+function claimHolds(text: string, board: BoardFacts): boolean {
+  if (!text) return true;
+  if (!numbersMatchFacts(text, board.tokens)) return false;
+  const lower = text.toLowerCase();
+  const entities = extractNamedEntities(text);
+  if (/holding steady|flat|unchanged/i.test(lower) && board.directions.__overall != null && Math.abs(board.directions.__overall) > 6) {
+    return false;
+  }
+  if (/compressing margins|margin pressure|margins? (are )?down/i.test(lower)) {
+    const gm = Object.entries(board.directions).find(([k]) => /margin/i.test(k));
+    if (board.directions.__gm != null && board.directions.__gm > 0.4) return false;
+    if (gm && gm[1] > 0.4) return false;
+  }
+  if (/accelerat/i.test(lower) && entities.length) {
+    const risers = Object.entries(board.directions)
+      .filter(([key, value]) => key !== '__overall' && key !== '__gm' && (value || 0) > 5)
+      .sort((a, b) => (b[1] || 0) - (a[1] || 0))
+      .map(([key]) => key.toLowerCase());
+    const named = entities.map((e) => e.toLowerCase());
+    if (named.some((name) => !risers.some((r) => r.includes(name) || name.includes(r)))) return false;
+  }
+  for (const entity of entities) {
+    const delta = board.directions[entity] ?? board.directions[entity.replace(/\s+/g, ' ')];
+    if (delta != null && /accelerat|fastest|riser|grew|growth/i.test(lower) && delta < 0) return false;
+  }
+  return true;
 }
 
 export function rewriteUnverifiedCopy(spec: DashboardSpec, datasets: DashboardDataset[]): DashboardSpec {
-  const facts = factStrings(datasets, spec);
-  const sentences = buildFactSentences(datasets, spec);
+  const board = collectBoardFacts(datasets, spec);
+  const facts = board.tokens;
+  const sentences = board.sentences;
   const clean = (text?: string) => {
     if (!text) return text;
-    if (numbersMatchFacts(text, facts)) return neverMidWord(text);
+    if (claimHolds(text, board)) return neverMidWord(text);
     return undefined;
   };
   const fallbackBody = neverMidWord(sentences.slice(0, 2).join(' ') || (facts[0] ? `${spec.title} is ${facts[0]}.` : 'No verified finding for this slice.'));
@@ -312,15 +468,38 @@ export function rewriteUnverifiedCopy(spec: DashboardSpec, datasets: DashboardDa
     subtitle: clean(spec.subtitle),
     narrative,
     widgets: spec.widgets.map((widget) => {
-      if (widget.type !== 'insight') return widget;
-      const text = clean(widget.insight?.text);
-      const next = text || fallbackBody;
-      const title = widget.insight?.title && normalizePhrase(widget.insight.title) !== normalizePhrase(next)
-        ? widget.insight.title
-        : undefined;
-      return { ...widget, insight: { ...widget.insight, text: next, title } };
+      const title = clean(widget.title) || prettyTitleFromWidget(widget, sentences);
+      const subtitle = /compared on /i.test(widget.subtitle || '') ? undefined : clean(widget.subtitle);
+      if (widget.type !== 'insight') {
+        return { ...widget, title, subtitle };
+      }
+      const text = clean(widget.insight?.text) || fallbackBody;
+      const extra = sentences.filter((s) => normalizePhrase(s) !== normalizePhrase(text)).slice(0, 2);
+      const body = extra.length && normalizePhrase(text) === normalizePhrase(widget.insight?.title || widget.title || '')
+        ? extra.join(' ')
+        : [text, extra[0]].filter((s, i, arr) => s && arr.findIndex((x) => normalizePhrase(x) === normalizePhrase(s)) === i).join(' ');
+      const rawTitle = widget.insight?.title || widget.title;
+      const insightTitle = shortInsightTitle(claimHolds(rawTitle || '', board) ? (rawTitle || body) : body);
+      const finalTitle = normalizePhrase(insightTitle) === normalizePhrase(body) ? undefined : insightTitle;
+      return {
+        ...widget,
+        title: finalTitle || insightTitle,
+        subtitle: undefined,
+        insight: { ...widget.insight, text: neverMidWord(body), title: finalTitle },
+      };
     }),
   };
+}
+
+function prettyTitleFromWidget(widget: DashboardWidget, sentences: string[]): string {
+  if (widget.type === 'section') return widget.title && !claimLooksFalse(widget.title) ? widget.title : 'Overview';
+  const safe = sentences.find((s) => s.length < 80) || sentences[0];
+  if (safe) return shortInsightTitle(safe, 56);
+  return widget.xField ? `${prettyField(widget.yField || 'Value')} by ${prettyField(widget.xField)}` : prettyField(widget.yField || widget.title);
+}
+
+function claimLooksFalse(text: string): boolean {
+  return /accelerat|compressing margins|holding steady|42%/.test(text);
 }
 
 export function dedupeHeadlines(spec: DashboardSpec): DashboardSpec {

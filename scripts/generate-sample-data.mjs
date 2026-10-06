@@ -51,7 +51,7 @@ for (let i = 0; i < 640; i++) {
   const region = regions[regionBias[i % regionBias.length]];
   const channel = channels[i % 3];
   const product = products[i % 4];
-  const segment = segments[i % 3];
+  const segment = segments[(Math.floor(i / 5) + (product === 'Helios ERP' ? 0 : product === 'Atlas CRM' ? 1 : 2) + (region === 'APAC' ? 1 : 0)) % 3];
   const season = 1 + 0.16 * Math.sin(((month - 1) / 12) * Math.PI * 2);
   const growth = 1 + (month / 12) * 0.48;
   const productFade = product === 'Helios ERP' ? 1 - month * 0.035 : 1 + (product === 'Nimbus Analytics' ? month * 0.02 : 0);
@@ -78,7 +78,12 @@ for (let day = 0; day < 84; day++) {
   for (const channel of webChannels) {
     const d = new Date(start);
     d.setDate(start.getDate() + day);
-    const device = devices[(day + webChannels.indexOf(channel)) % 3];
+    const deviceMix = channel === 'Paid' || channel === 'Social'
+      ? ['Mobile', 'Mobile', 'Desktop', 'Tablet']
+      : channel === 'Organic' || channel === 'Direct'
+        ? ['Desktop', 'Desktop', 'Mobile', 'Tablet']
+        : ['Desktop', 'Mobile', 'Tablet', 'Mobile'];
+    const device = deviceMix[(day + webChannels.indexOf(channel)) % deviceMix.length];
     const weekday = d.getDay();
     const paidLift = channel === 'Paid' ? 1 + day / 160 : 1;
     const sessions = Math.round((channel === 'Paid' ? 2200 : channel === 'Organic' ? 1800 : channel === 'Social' ? 1400 : 900) * (weekday === 0 || weekday === 6 ? 0.7 : 1) * paidLift * (0.75 + webRand() * 0.5));
@@ -113,8 +118,9 @@ for (let m = 0; m < 24; m++) {
       const revenue = Math.round(base * growth * (0.85 + finRand() * 0.3));
       const cogsRate = business_unit === 'Cloud' ? 0.28 : business_unit === 'Hardware' ? 0.52 : 0.38;
       const cogs = Math.round(revenue * (cogsRate + finRand() * 0.05));
-      const opex = Math.round(revenue * (business_unit === 'Hardware' ? 0.42 : 0.26) * (0.9 + finRand() * 0.15));
-      const budget_opex = Math.round(opex * (business_unit === 'Hardware' ? 0.72 : 1.05) * (0.95 + finRand() * 0.08));
+      const centerLift = cost_center === 'GTM' ? 1.18 : cost_center === 'R&D' ? 1.08 : 0.86;
+      const opex = Math.round(revenue * (business_unit === 'Hardware' ? 0.42 : 0.26) * centerLift * (0.9 + finRand() * 0.15));
+      const budget_opex = Math.round(opex * (business_unit === 'Hardware' ? 0.72 : cost_center === 'GTM' ? 0.94 : 1.05) * (0.95 + finRand() * 0.08));
       const ebitda = revenue - cogs - opex;
       const headcount = Math.round(18 + m * 0.4 + finRand() * 8 + (business_unit === 'Cloud' ? 12 : 0));
       const dso_days = Math.round((business_unit === 'Hardware' ? 46 : 28) + finRand() * 12);

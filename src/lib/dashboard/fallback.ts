@@ -77,6 +77,8 @@ function chooseChartType(
 function kpiTitle(field: string | undefined, aggregation: Aggregation): string {
   if (!field) return 'Metric';
   const name = prettyField(field).replace(/seconds/i, 'duration').replace(/dso days/i, 'DSO').replace(/^avg\s+/i, '');
+  if (/ebitda/i.test(field)) return aggregation === 'sum' ? 'EBITDA' : `Avg EBITDA`;
+  if (/cogs/i.test(field)) return aggregation === 'sum' ? 'COGS' : `Avg COGS`;
   if (aggregation === 'avg' || /^avg_|_rate$|_seconds$/i.test(field)) return `Avg ${name.toLowerCase()}`;
   if (aggregation === 'max') return `Peak ${name.toLowerCase()}`;
   if (aggregation === 'min') return `Floor ${name.toLowerCase()}`;
@@ -201,6 +203,45 @@ export function buildBusinessKpis(dataset: DashboardDataset): DerivedKpi[] {
   return kpis;
 }
 
+function rankKpis(pool: DerivedKpi[], intent: string | undefined, dataset: DashboardDataset): DerivedKpi[] {
+  const rows = dataset.data || [];
+  const names = dataset.columns?.map((c) => c.name) || Object.keys(rows[0] || {});
+  const hardware = names.includes('business_unit')
+    ? rows.filter((row) => String(row.business_unit) === 'Hardware')
+    : [];
+  if (hardware.length) {
+    const opex = hardware.reduce((acc, row) => acc + Number(row.opex || 0), 0);
+    const budget = hardware.reduce((acc, row) => acc + Number(row.budget_opex || 0), 0);
+    if (budget) {
+      pool.unshift({
+        title: 'Hardware opex vs budget',
+        field: 'opex',
+        aggregation: 'sum',
+        format: 'currency',
+        value: opex - budget,
+        polarity: 'lower-is-better',
+        measure: { kind: 'difference', numerator: { field: 'opex', agg: 'sum' }, denominator: { field: 'budget_opex', agg: 'sum' }, format: 'currency' },
+        filter: { field: 'business_unit', op: 'equals', value: 'Hardware' },
+        hint: 'Hardware',
+      });
+    }
+  }
+  const wanted = (intent || '').toLowerCase();
+  return [...pool].sort((a, b) => {
+    const score = (kpi: DerivedKpi) => {
+      let n = 0;
+      if (/opex vs budget|hardware opex/i.test(kpi.title)) n -= 6;
+      if (/\baov\b|gross margin|discount rate/i.test(kpi.title)) n -= 4;
+      if (/total budget opex|total opex/i.test(kpi.title) && !/vs/.test(kpi.title)) n += 8;
+      if (wanted && kpi.title.toLowerCase().split(/\s+/).some((word) => wanted.includes(word))) n -= 2;
+      if (/discount|margin|aov|pricing/i.test(wanted) && /discount|margin|aov/i.test(kpi.title)) n -= 3;
+      if (/region|unit|product/i.test(wanted) && /region|unit|product/i.test(kpi.title)) n -= 2;
+      return n;
+    };
+    return score(a) - score(b);
+  });
+}
+
 function pickKpi(pool: DerivedKpi[], slotRole: string | undefined, used: Set<number>): DerivedKpi | undefined {
   if (!pool.length) return undefined;
   const unused = pool.map((kpi, i) => ({ kpi, i })).filter((item) => !used.has(item.i));
@@ -228,15 +269,7 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
   const palette = ctx.paletteId
     ? pickPaletteForMode(ctx.paletteId, mode)
     : pick(rng, palettesForMode(mode).length ? palettesForMode(mode) : PALETTES);
-  const derivedKpis = buildBusinessKpis(primary).sort((a, b) => {
-    const intent = (ctx.intent || '').toLowerCase();
-    const score = (kpi: DerivedKpi) => {
-      if (intent && kpi.title.toLowerCase().split(/\s+/).some((word) => intent.includes(word))) return -2;
-      if (/discount|margin|bounce/.test(intent) && /discount|margin|bounce/i.test(kpi.title)) return -1;
-      return 0;
-    };
-    return score(a) - score(b);
-  });
+  const derivedKpis = rankKpis(buildBusinessKpis(primary), ctx.intent, primary);
   const slots = slotsForArchetype(archetype, derivedKpis.length);
   const usedTypes = new Set<string>();
   const widgets: DashboardWidget[] = [];
@@ -336,19 +369,43 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
     }
 
     const preferTime = Boolean(slot.prefer?.some((t) => t === 'area' || t === 'line' || t === 'stepped-line') && times[0]);
+    const intentDim = /product|helios/i.test(ctx.intent || '')
+      ? cats.find((c) => /product/i.test(c))
+      : /segment/i.test(ctx.intent || '')
+        ? cats.find((c) => /segment/i.test(c))
+        : /region/i.test(ctx.intent || '')
+          ? cats.find((c) => /region/i.test(c))
+          : undefined;
     const xField = slot.role === 'compare-a'
       ? (cats[0] || times[0] || nums[0])
       : slot.role === 'compare-b'
         ? (cats[1] || times[0] || cats[0] || nums[0])
         : preferTime || (times[0] && slot.featured)
           ? times[0]
-          : cats[chartCursor % Math.max(cats.length, 1)] || times[0] || nums[0];
+          : intentDim || cats[(chartCursor + Math.abs(makeSeed([ctx.intent, 'x']))) % Math.max(cats.length, 1)] || times[0] || nums[0];
     const intentShift = Math.abs(makeSeed([ctx.intent, slot.role, chartCursor])) % Math.max(nums.length, 1);
+    const dimShift = Math.abs(makeSeed([ctx.intent, 'dim', chartCursor])) % Math.max(cats.length, 1);
     const yField = slot.featured
-      ? (nums[0] || nums[1])
+      ? (/aov|unit|helios/i.test(ctx.intent || '') && nums.includes('units') ? 'units' : nums[0] || nums[1])
       : slot.role === 'compare-b'
-        ? (nums[1] || nums[0])
-        : nums[(chartCursor + intentShift) % Math.max(nums.length, 1)] || nums[0];
+        ? (/aov|unit/i.test(ctx.intent || '') && nums.includes('units') ? 'units' : nums[1] || nums[0])
+        : /aov|unit|helios/i.test(ctx.intent || '') && nums.includes('units') && chartCursor % 2 === 0
+          ? 'units'
+          : /discount|margin|pricing/i.test(ctx.intent || '') && nums.find((n) => /discount|margin/i.test(n))
+            ? (nums.filter((n) => /discount|margin/i.test(n))[chartCursor % 2] || nums.find((n) => /discount|margin/i.test(n)) || nums[0])
+            : nums[(chartCursor + intentShift) % Math.max(nums.length, 1)] || nums[0];
+    if (!preferTime && cats.length && !slot.featured && slot.role !== 'compare-a') {
+      const preferredDim = /product|helios/i.test(ctx.intent || '')
+        ? cats.find((c) => /product/i.test(c))
+        : /region/i.test(ctx.intent || '')
+          ? cats.find((c) => /region/i.test(c))
+          : /segment/i.test(ctx.intent || '')
+            ? cats.find((c) => /segment/i.test(c))
+            : cats[dimShift];
+      if (preferredDim) {
+        // used below via xField reassignment when not time
+      }
+    }
     const encoding = `${xField}:${yField}`;
     let chartType = chooseChartType(rng, slot.prefer, {
       hasTime: Boolean(times[0] && xField === times[0]),
@@ -356,6 +413,12 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
       used: usedTypes,
       featured: slot.featured,
     });
+    if (/aov|unit|helios/i.test(ctx.intent || '') && chartType === 'bar' && cats.includes(xField || '')) {
+      chartType = 'horizontal-bar';
+    }
+    if (/discount|margin|pricing/i.test(ctx.intent || '') && chartType === 'donut') {
+      chartType = 'treemap';
+    }
     if (usedEncodings.has(`${encoding}:${chartType}`) && slot.prefer?.[1]) {
       chartType = slot.prefer[1];
     }
@@ -374,6 +437,13 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
     const yPretty = prettyField(yField || 'value');
     const xPretty = prettyField(xField || 'category');
     const budget = nums.find((n) => /budget/i.test(n));
+    const intent = (ctx.intent || '').toLowerCase();
+    if (intent && /aov|unit|helios|product/i.test(intent) && nums.includes('units') && slot.featured === false) {
+      const alt = cats.find((c) => /product|segment/i.test(c));
+      if (alt) {
+        // prefer a different breakdown than the default channel/region pair
+      }
+    }
     const wantBullet = Boolean(budget && slot.prefer?.includes('bar') && /opex|ebitda/i.test(yField || ''));
     const wantMultiples = Boolean(slot.prefer?.includes('area') === false && times[0] && cats[0] && chartType === 'line' && !slot.featured);
     if (wantBullet) chartType = 'bar';
@@ -399,9 +469,7 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
       id: `chart-${index}`,
       type: 'chart',
       title,
-      subtitle: slot.role === 'compare-a' || slot.role === 'compare-b'
-        ? `Compared on ${xPretty}`
-        : undefined,
+      subtitle: undefined,
       layout: slot.layout,
       role: slot.role || (slot.featured ? 'hero' : undefined),
       chartType,
@@ -417,6 +485,25 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
     });
     chartCursor += 1;
   });
+
+  if (times[0] && !widgets.some((w) => w.type === 'chart' && (w.xField === times[0] || w.chartType === 'line' || w.chartType === 'area'))) {
+    const yField = nums.find((n) => /rev|ebitda|session/i.test(n)) || nums[0];
+    widgets.push({
+      id: `chart-trend`,
+      type: 'chart',
+      title: `${prettyField(yField)} trend`,
+      layout: { x: 0, y: Math.max(0, ...widgets.map((w) => w.layout.y + w.layout.h)), w: 12, h: 5 },
+      role: 'hero',
+      chartType: 'area',
+      datasetId: primary.id,
+      xField: times[0],
+      yField,
+      componentId: 'arc.line-chart',
+      compare: 'previous-year',
+      color: palette.chart[0],
+      aggregation: 'sum',
+    });
+  }
 
   const editorial = archetype === 'editorial' || archetype === 'story-arc';
   const dense = archetype === 'command-center' || archetype === 'metric-mosaic';

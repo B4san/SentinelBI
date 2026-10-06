@@ -39,13 +39,47 @@
   color: var(--accent, #2563eb);
   border-color: var(--accent, #2563eb);
 }
-.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.fields label { display: flex; flex-direction: column; gap: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.7; }
-.fields input {
-  border: 1px solid var(--border, #e2e8f0);
-  border-radius: 8px;
-  padding: 6px 8px;
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
   font-size: 12px;
+}
+.nav button {
+  border: 1px solid var(--border, #e2e8f0);
   background: transparent;
+  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
   color: inherit;
+}
+.calendars { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.month { min-width: 196px; }
+.weekdays, .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.weekdays span { text-align: center; font-size: 10px; opacity: 0.55; padding: 2px 0; }
+.days button {
+  height: 26px;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  color: inherit;
+}
+.days button[data-in-month='false'] { opacity: 0.35; }
+.days button[data-selected='true'] { background: var(--accent-soft, #dbeafe); }
+.days button[data-start='true'],
+.days button[data-end='true'] { background: var(--accent, #2563eb); color: #fff; }
+.days button:disabled { opacity: 0.2; cursor: default; }
+@media (max-width: 700px) {
+  .calendars { grid-template-columns: 1fr; }
+}
+html[data-theme='dark'] .panel,
+:root[data-theme='dark'] .panel {
+  background: var(--surface, #111827);
+  box-shadow: 0 16px 40px -20px rgba(0, 0, 0, 0.7);
 }

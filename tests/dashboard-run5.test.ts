@@ -58,8 +58,11 @@ describe('generation robustness', () => {
 
   it('steps down the format ladder when schema output is unusable', async () => {
     const calls: string[] = [];
-    const fetchImpl = vi.fn(async (_url: string, init: { body: string }) => {
-      const body = JSON.parse(init.body);
+    const fetchImpl = vi.fn(async (url: string, init?: { body?: string; method?: string }) => {
+      if (String(url).includes('/models')) {
+        return { status: 200, text: async () => JSON.stringify({ data: [{ id: 'x', supported_parameters: ['structured_outputs'] }] }) };
+      }
+      const body = JSON.parse(init?.body || '{}');
       calls.push(body.response_format?.type || 'plain');
       if (body.response_format?.type === 'json_schema') {
         return { status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: '{not json' } }] }) };
@@ -81,6 +84,7 @@ describe('generation robustness', () => {
         provider: 'openai',
         model: 'x',
         baseUrl: 'https://api.openai.com/v1',
+        fetchImpl: fetchImpl as unknown as typeof fetch,
       }, { AI_PROVIDER: 'openai', OPENAI_API_KEY: 'k' });
       expect(result.source).toBe('ai');
       expect(result.spec.widgets.length).toBeGreaterThan(0);

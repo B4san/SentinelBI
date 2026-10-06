@@ -69,6 +69,7 @@ export interface ModelInfo {
   id: string;
   label: string;
   ownedBy?: string;
+  structuredOutputs?: boolean;
 }
 
 export class AIProviderError extends Error {

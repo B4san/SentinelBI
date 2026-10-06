@@ -22,7 +22,26 @@ test('hydrated /d page styles, slicer, cross-filter, and compare', async ({ page
   const slicer = page.locator('.dash-toolbar button').filter({ hasText: /North|South|EMEA|APAC|LATAM|Direct|Partner/ }).first();
   if (await slicer.count()) await slicer.click();
   const plot = page.locator('.dash-plot').first();
-  if (await plot.count()) await plot.click({ position: { x: 80, y: 80 } });
+  if (await plot.count()) {
+    const bar = page.locator('.dash-plot rect').first();
+    if (await bar.count()) await bar.click();
+    else await plot.click({ position: { x: 80, y: 80 } });
+  }
+  const chips = page.locator('.dash-toolbar button').filter({ hasText: /=/ });
+  if (await chips.count()) {
+    expect(await chips.count()).toBeLessThanOrEqual(2);
+  }
+  const afterFilter = await firstKpi.textContent();
+  expect(afterFilter).toBeTruthy();
+  expect(afterFilter).not.toMatch(/^\$0|0\.0%$/);
+
+  const last30 = page.getByRole('button', { name: /Last 30d|Date range|2025-/ }).first();
+  if (await last30.count()) {
+    await last30.click();
+    const preset = page.getByRole('button', { name: 'Last 30d' });
+    if (await preset.count()) await preset.click();
+  }
+
   await page.getByRole('button', { name: /Compare period|Vs previous|Vs last year/ }).click();
   const after = await firstKpi.textContent();
   expect(before).toBeTruthy();

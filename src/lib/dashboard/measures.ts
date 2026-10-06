@@ -25,7 +25,10 @@ export function isSemiAdditive(field?: string): boolean {
 export function isDegenerateRatio(measure?: DerivedMeasure | null): boolean {
   if (!measure) return false;
   if (measure.kind === 'difference' || measure.kind === 'weighted') return false;
-  return measure.numerator.field === measure.denominator.field;
+  if (!measure.numerator?.field || !measure.denominator?.field) return false;
+  const sameField = measure.numerator.field === measure.denominator.field;
+  const sameAgg = (measure.numerator.agg || 'sum') === (measure.denominator.agg || 'sum');
+  return sameField && sameAgg;
 }
 
 export function proposeDerivedMeasures(dataset: DashboardDataset): DerivedCandidate[] {
@@ -36,6 +39,7 @@ export function proposeDerivedMeasures(dataset: DashboardDataset): DerivedCandid
   const spend = hasField(names, 'ad', 'spend') || hasField(names, 'spend');
   const conversions = hasField(names, 'conversion');
   const sessions = hasField(names, 'session');
+  const bounce = hasField(names, 'bounce');
   const cogs = hasField(names, 'cogs') || hasField(names, 'cost of');
   const ebitda = hasField(names, 'ebitda');
   const headcount = hasField(names, 'headcount') || hasField(names, 'fte');
@@ -52,6 +56,13 @@ export function proposeDerivedMeasures(dataset: DashboardDataset): DerivedCandid
       measure: { kind: 'ratio', numerator: { field: revenue, agg: 'sum' }, denominator: { field: spend, agg: 'sum' }, format: 'multiple' },
     });
   }
+  if (bounce && sessions) {
+    out.push({
+      id: 'bounce',
+      title: 'Bounce rate',
+      measure: { kind: 'weighted', numerator: { field: bounce, agg: 'avg' }, denominator: { field: sessions, agg: 'sum' }, format: 'percent' },
+    });
+  }
   if (conversions && sessions) {
     out.push({
       id: 'cvr',
@@ -59,7 +70,13 @@ export function proposeDerivedMeasures(dataset: DashboardDataset): DerivedCandid
       measure: { kind: 'ratio', numerator: { field: conversions, agg: 'sum' }, denominator: { field: sessions, agg: 'sum' }, format: 'percent' },
     });
   }
-  if (revenue && cogs) {
+  if (gmField && revenue) {
+    out.push({
+      id: 'gm',
+      title: 'Gross margin',
+      measure: { kind: 'weighted', numerator: { field: gmField, agg: 'avg' }, denominator: { field: revenue, agg: 'sum' }, format: 'percent' },
+    });
+  } else if (revenue && cogs) {
     out.push({
       id: 'gm',
       title: 'Gross margin',
@@ -72,6 +89,13 @@ export function proposeDerivedMeasures(dataset: DashboardDataset): DerivedCandid
       field: gmField,
       agg: 'avg',
       format: 'percent',
+    });
+  }
+  if (discount && revenue) {
+    out.push({
+      id: 'discount',
+      title: 'Discount rate',
+      measure: { kind: 'weighted', numerator: { field: discount, agg: 'avg' }, denominator: { field: revenue, agg: 'sum' }, format: 'percent' },
     });
   }
   if (revenue && (cogs || gmField) && discount) {
@@ -110,15 +134,29 @@ export function proposeDerivedMeasures(dataset: DashboardDataset): DerivedCandid
       measure: { kind: 'difference', numerator: { field: opex, agg: 'sum' }, denominator: { field: budget, agg: 'sum' }, format: 'currency' },
     });
   }
+  if (revenue) {
+    out.push({
+      id: 'aov',
+      title: 'AOV',
+      measure: {
+        kind: 'ratio',
+        numerator: { field: revenue, agg: 'sum' },
+        denominator: { field: revenue, agg: 'count' },
+        format: 'currency',
+      },
+    });
+  }
   if (revenue && units) {
-    const ratio: DerivedMeasure = {
-      kind: 'ratio',
-      numerator: { field: revenue, agg: 'sum' },
-      denominator: { field: units, agg: 'sum' },
-      format: 'currency',
-    };
-    out.push({ id: 'aov', title: 'AOV', measure: ratio });
-    out.push({ id: 'rev-unit', title: 'Revenue per unit', measure: { ...ratio } });
+    out.push({
+      id: 'rev-unit',
+      title: 'Revenue per unit',
+      measure: {
+        kind: 'ratio',
+        numerator: { field: revenue, agg: 'sum' },
+        denominator: { field: units, agg: 'sum' },
+        format: 'currency',
+      },
+    });
   }
   return out;
 }
@@ -128,9 +166,11 @@ export function snapCandidate(title: string, dataset: DashboardDataset): Derived
   const normalized = title.toLowerCase();
   const matchers: Array<{ test: RegExp; id: string }> = [
     { test: /discount[- ]weighted|discount vs margin/i, id: 'disc-margin' },
+    { test: /avg(?:erage)? discount|discount rate/i, id: 'discount' },
     { test: /gross margin/i, id: 'gm' },
     { test: /ebitda margin/i, id: 'ebitda-margin' },
     { test: /\broas\b/i, id: 'roas' },
+    { test: /bounce rate/i, id: 'bounce' },
     { test: /conversion rate|\bcvr\b/i, id: 'cvr' },
     { test: /\baov\b|average order/i, id: 'aov' },
     { test: /revenue per (head|fte|employee)/i, id: 'rev-fte' },
@@ -152,6 +192,7 @@ function measureRefValue(
   timeField?: string,
 ): number {
   const agg = ref.agg || inferAggregation(ref.field);
+  if (agg === 'count') return rows.length;
   if (isSemiAdditive(ref.field) && timeField) {
     const buckets = bucketTimeSeries(rows, timeField, ref.field, 'sum');
     if (buckets.length === 0) return 0;

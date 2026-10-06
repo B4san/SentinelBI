@@ -52,8 +52,18 @@ export function DashboardCanvas({
   const [slicerField, setSlicerField] = useState(fields.dimensions[0] || '');
   const [range, setRange] = useState<DateRangeValue>({ from: '', to: '', preset: 'custom' });
   const [drill, setDrill] = useState<string[]>([]);
+  const [highlight, setHighlight] = useState<{ field: string; value: string } | null>(null);
 
   const timeField = fields.time[0];
+  const dateBounds = useMemo(() => {
+    if (!timeField || !datasets[0]) return { min: undefined as Date | undefined, max: undefined as Date | undefined };
+    const dates = datasets[0].data
+      .map((row) => parseLocalDate(row[timeField]))
+      .filter((d): d is Date => Boolean(d))
+      .sort((a, b) => a.getTime() - b.getTime());
+    return { min: dates[0], max: dates[dates.length - 1] };
+  }, [datasets, timeField]);
+
   const extraFilters = useMemo(() => {
     const next = [...filters];
     if (slicerField && slicer) next.push({ field: slicerField, op: 'equals', value: slicer });
@@ -64,14 +74,16 @@ export function DashboardCanvas({
 
   const addFilter = (field: string, value: string) => {
     setFilters((current) => {
-      const without = current.filter((f) => !(f.field === field && f.value === value));
-      return [...without, { field, op: 'equals', value }];
+      const existing = current.find((f) => f.field === field && f.value === value);
+      if (existing) return current.filter((f) => f !== existing);
+      return [...current.filter((f) => f.field !== field), { field, op: 'equals', value }];
     });
+    setHighlight({ field, value });
   };
 
-  const drillInto = (value: string) => {
+  const drillInto = (field: string, value: string) => {
     setDrill((current) => [...current, value]);
-    if (fields.dimensions[0]) addFilter(fields.dimensions[0], value);
+    addFilter(field, value);
   };
 
   const slicerValues = useMemo(() => {
@@ -108,7 +120,21 @@ export function DashboardCanvas({
 
       <div className="dash-toolbar mb-4 flex flex-wrap items-center gap-2">
         {timeField && (
-          <DateRangePicker value={range} onChange={setRange} accent={palette.accent} muted={palette.muted} />
+          <DateRangePicker
+            value={range}
+            onChange={setRange}
+            accent={palette.accent}
+            muted={palette.muted}
+            minDate={dateBounds.min}
+            maxDate={dateBounds.max}
+            hasDate={(iso) => {
+              if (!datasets[0] || !timeField) return true;
+              return datasets[0].data.some((row) => {
+                const raw = String(row[timeField] ?? '');
+                return raw.slice(0, 10) === iso || raw.startsWith(iso.slice(0, 7));
+              });
+            }}
+          />
         )}
         {fields.dimensions[0] && (
           <select
@@ -206,14 +232,15 @@ export function DashboardCanvas({
               spec={specWithCompare}
               widget={widget}
               datasets={datasets}
-              filters={extraFilters}
+              filters={filtersForWidget(widget, extraFilters)}
+              highlight={highlight && highlight.field === widget.xField ? highlight.value : undefined}
               editing={editing}
               selected={selectedId === widget.id}
               onSelect={onSelect}
               onRegenerate={onRegenerateWidget}
               onPointClick={(field, value) => {
                 addFilter(field, value);
-                drillInto(value);
+                drillInto(field, value);
               }}
             />
           </GridItem>
@@ -221,6 +248,11 @@ export function DashboardCanvas({
       </div>
     </div>
   );
+}
+
+function filtersForWidget(widget: DashboardWidget, extra: WidgetFilter[]): WidgetFilter[] {
+  if (!widget.xField) return extra;
+  return extra.filter((f) => !(f.field === widget.xField && f.op === 'equals'));
 }
 
 function GridItem({
@@ -251,9 +283,11 @@ function GridItem({
     gridColumn: `${x + 1} / span ${Math.max(1, w)}`,
     gridRow: `${y + 1} / span ${Math.max(1, h)}`,
     minWidth: 0,
-    height: cellHeight,
-    zIndex: selected ? 4 : 1,
+    height: widget.type === 'section' ? 'auto' : cellHeight,
+    minHeight: widget.type === 'section' ? 36 : cellHeight,
+    zIndex: widget.type === 'section' ? 2 : selected ? 4 : 1,
     position: 'relative' as const,
+    overflow: widget.type === 'section' ? 'visible' : 'hidden',
     ['--dash-cell-h' as string]: `${cellHeight}px`,
   };
 
