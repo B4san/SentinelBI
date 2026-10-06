@@ -153,6 +153,8 @@ export function isLowInformationCut(
   if (max <= 0) return true;
   const spread = (max - min) / max;
   if (ranked.length <= 4 && spread < 0.12) return true;
+  const nearEqual = ranked.filter((row) => max > 0 && (max - row.value) / max < 0.08).length;
+  if (ranked.length <= 4 && nearEqual >= 3) return true;
   const shares = ranked.map((row) => row.share);
   const equalThirds = ranked.length === 3 && shares.every((s) => Math.abs(s - 1 / 3) < 0.04);
   return equalThirds;

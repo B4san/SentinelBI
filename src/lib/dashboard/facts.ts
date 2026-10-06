@@ -487,7 +487,11 @@ export function rewriteUnverifiedCopy(spec: DashboardSpec, datasets: DashboardDa
       }
       const sourceTitle = editorialInsightTitle(widget.insight?.title || widget.title, clean(widget.insight?.text) || fallbackBody, sentences);
       const text = clean(widget.insight?.text) || fallbackBody;
-      const extras = sentences.filter((s) => normalizePhrase(s) !== normalizePhrase(text) && normalizePhrase(s) !== normalizePhrase(sourceTitle || '')).slice(0, 2);
+      const extras = sentences.filter((s) => {
+        const n = normalizePhrase(s);
+        const blob = normalizePhrase(text);
+        return Boolean(n) && n !== blob && n !== normalizePhrase(sourceTitle || '') && !blob.includes(n);
+      }).slice(0, 2);
       const body = [text, extras[0]].filter((s, i, arr) => s && arr.findIndex((x) => normalizePhrase(x) === normalizePhrase(s)) === i).join(' ');
       const insightTitle = shortInsightTitle(claimHolds(sourceTitle || '', board) ? (sourceTitle || sentences[0] || 'Key finding') : (sentences[0] || 'Key finding'), 48);
       const finalTitle = normalizePhrase(insightTitle) === normalizePhrase(body) || body.toLowerCase().includes(insightTitle.toLowerCase())

@@ -126,6 +126,8 @@ describe('live filters and low-information charts', () => {
     const blob = `${live.subtitle || ''} ${live.widgets.map((w) => `${w.title} ${w.insight?.text || ''}`).join(' ')}`;
     expect(blob).not.toMatch(/fell 19%/i);
     expect(blob.length).toBeGreaterThan(10);
+    const partnerHits = blob.match(/Partner leads/gi) || [];
+    expect(partnerHits.length).toBeLessThanOrEqual(1);
   });
 
   it('lets a treemap respond to a filter on another field', () => {
