@@ -5,14 +5,29 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Button } from '../components/ui/button';
 import { Sparkles, Upload, LayoutDashboard } from 'lucide-react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
-import { MetricCard } from '../components/arc/metric-card/metric-card';
-import { Progress } from '../components/arc/progress/progress';
-import { EmptyState } from '../components/arc/empty-state/empty-state';
-import { Badge } from '../components/arc/badge/badge';
-import { Sparkline } from '../components/arc/sparkline/sparkline';
+import { HonestEmpty } from '../components/HonestEmpty';
 import { generateContent } from '../lib/ai/client';
 import { buildOverviewModel } from '../lib/overview/buildOverview';
 import type { TopologyHealth } from '../lib/topology/buildTopology';
+
+function MiniSpark({ values }: { values: number[] }) {
+  if (values.length < 2) return null;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const d = values
+    .map((value, index) => {
+      const x = (index / (values.length - 1)) * 100;
+      const y = 26 - ((value - min) / span) * 22;
+      return `${index === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(' ');
+  return (
+    <svg viewBox="0 0 100 32" className="mt-3 h-8 w-full" aria-hidden="true" focusable="false">
+      <path d={d} fill="none" stroke="var(--nav-marker)" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -45,6 +60,10 @@ export function Dashboard() {
     setExplanation(null);
     try {
       const data = await generateContent({
+        provider: aiSettings.provider,
+        baseUrl: aiSettings.baseUrl,
+        model: aiSettings.model,
+        apiKey: aiSettings.apiKey,
         contents: `You are a BI data analyst. In 2-3 sentences, explain this workspace using only the numbers given. Space: ${activeSpace.title}. Rows: ${model.rowCount}. Completeness: ${model.completeness ?? 'n/a'}%. Anomalies: ${model.anomalies}. KPIs: ${model.kpis.map((k) => `${k.label} ${k.value}`).join('; ') || 'none'}.`,
       });
       setExplanation(data.text || 'No explanation returned.');
@@ -66,10 +85,10 @@ export function Dashboard() {
       return acc;
     }, []);
 
-  const statusTone = health?.ok ? 'success' : health?.ok === false ? 'warning' : 'neutral';
+  const healthDot = health?.ok ? 'var(--success)' : health?.ok === false ? 'var(--danger)' : 'var(--muted-foreground)';
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 max-w-[1440px]">
+    <div className="space-y-6 max-w-[1440px]">
       <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div className="min-w-0">
           <h2 className="page-title truncate">{activeSpace.title} Overview</h2>
@@ -77,21 +96,22 @@ export function Dashboard() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {(activeSpace.datasets || []).slice(0, 3).map((ds) => (
-            <Badge key={ds.id} tone="neutral" size="sm">
+            <span key={ds.id} className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-1 text-sm text-[var(--foreground)]">
               {ds.name} · {(ds.data?.length || 0).toLocaleString()} × {(ds.columns?.length || 0)}
-            </Badge>
+            </span>
           ))}
-          <Badge tone={statusTone} size="sm">
+          <span className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-1 text-sm text-[var(--foreground)]">
+            <span className="h-2 w-2 rounded-full" style={{ background: healthDot }} aria-hidden />
             {model.providerLabel}
             {model.keySource === 'user' ? ' · your key' : model.keySource === 'env' ? ' · server key' : ' · no key'}
-          </Badge>
+          </span>
         </div>
       </header>
 
       {!model.hasData ? (
         <Card>
           <CardContent className="py-10">
-            <EmptyState
+            <HonestEmpty
               title="No dataset loaded"
               description="Upload a CSV to compute real KPIs, completeness, and activity. Nothing here is estimated."
               action={
@@ -104,22 +124,12 @@ export function Dashboard() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
           {model.kpis.map((kpi) => (
-            <div key={kpi.id} className="min-w-0">
-              {Number.isFinite(kpi.raw) && /%$/.test(kpi.value) === false && kpi.value === kpi.raw.toLocaleString() ? (
-                <MetricCard label={kpi.label} value={kpi.raw} context={kpi.context} change={kpi.change} />
-              ) : (
-                <article className="surface-card rounded-[1.25rem] p-5 h-full min-w-0 overflow-hidden">
-                  <p className="text-sm text-[var(--muted-foreground)] truncate">{kpi.label}</p>
-                  <p className="dash-kpi-value mt-2 break-words">{kpi.value}</p>
-                  <p className="text-sm text-[var(--muted-foreground)] mt-2">{kpi.context}</p>
-                  {kpi.sparkline.length > 1 && (
-                    <div className="mt-3">
-                      <Sparkline data={kpi.sparkline} label={kpi.label} area />
-                    </div>
-                  )}
-                </article>
-              )}
-            </div>
+            <article key={kpi.id} className="surface-card rounded-[1.25rem] p-5 h-full min-w-0 overflow-hidden">
+              <p className="text-sm text-[var(--muted-foreground)] truncate">{kpi.label}</p>
+              <p className="dash-kpi-value mt-2 break-words text-[var(--foreground)]">{kpi.value}</p>
+              <p className="text-sm text-[var(--muted-foreground)] mt-2">{kpi.context}</p>
+              <MiniSpark values={kpi.sparkline} />
+            </article>
           ))}
         </div>
       )}
@@ -150,7 +160,7 @@ export function Dashboard() {
           ) : (
             <Card>
               <CardContent className="py-8">
-                <EmptyState
+                <HonestEmpty
                   title="No dashboard yet"
                   description="Generate a board fitted to this space’s actual columns and measures."
                   action={
@@ -195,7 +205,7 @@ export function Dashboard() {
                   </ResponsiveContainer>
                 </div>
               ) : (
-                <EmptyState
+                <HonestEmpty
                   title="No activity yet"
                   description="Generate a dashboard or start a chat to populate this timeline."
                   action={
@@ -219,11 +229,13 @@ export function Dashboard() {
               )}
               {model.columns.map((col) => (
                 <div key={col.name} className="min-w-0">
-                  <Progress
-                    value={col.completeness}
-                    label={`${col.name} · ${col.type}${col.outliers ? ` · ${col.outliers} outliers` : ''}`}
-                    showValue
-                  />
+                  <div className="flex justify-between gap-3 text-sm mb-1">
+                    <span className="truncate text-[var(--foreground)]">{col.name} · {col.type}{col.outliers ? ` · ${col.outliers} outliers` : ''}</span>
+                    <span className="tabular-nums text-[var(--foreground)]">{col.completeness}%</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-[var(--muted)] overflow-hidden">
+                    <div className="h-full rounded-full bg-[var(--nav-marker)]" style={{ width: `${col.completeness}%` }} />
+                  </div>
                 </div>
               ))}
             </CardContent>

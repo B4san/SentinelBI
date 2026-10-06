@@ -23,12 +23,12 @@
     --card-foreground: #0f172a;
     --popover: #ffffff;
     --popover-foreground: #0f172a;
-    --primary: #2563eb;
+    --primary: #1e40af;
     --primary-foreground: #ffffff;
     --secondary: #eef2f7;
     --secondary-foreground: #334155;
     --muted: #f1f5f9;
-    --muted-foreground: #64748b;
+    --muted-foreground: #334155;
     --accent: #e8eef7;
     --accent-foreground: #0f172a;
     --destructive: #ef4444;
@@ -40,7 +40,7 @@
     --sidebar: #ffffff;
     --header: rgba(244, 247, 251, 0.86);
     --surface: #ffffff;
-    --text-secondary: #64748b;
+    --text-secondary: #334155;
     --success: #059669;
     --warning: #d97706;
     --danger: #e11d48;
@@ -53,12 +53,12 @@
     --card-foreground: #e8eef7;
     --popover: #141c2e;
     --popover-foreground: #e8eef7;
-    --primary: #60a5fa;
-    --primary-foreground: #0b1220;
+    --primary: #1e40af;
+    --primary-foreground: #ffffff;
     --secondary: #1b2438;
     --secondary-foreground: #cbd5e1;
     --muted: #172033;
-    --muted-foreground: #94a3b8;
+    --muted-foreground: #e2e8f0;
     --accent: #1b2438;
     --accent-foreground: #e8eef7;
     --destructive: #fb7185;
@@ -69,7 +69,7 @@
     --sidebar: #10182a;
     --header: rgba(11, 18, 32, 0.82);
     --surface: #141c2e;
-    --text-secondary: #94a3b8;
+    --text-secondary: #e2e8f0;
     --success: #34d399;
     --warning: #fbbf24;
     --danger: #fb7185;
@@ -77,21 +77,6 @@
 
   [data-theme="dark"] {
     color-scheme: dark;
-  }
-
-  :root {
-    --nav-active-bg: #e8f0fe;
-    --nav-active-fg: #1d4ed8;
-    --nav-inactive-fg: #475569;
-    --nav-marker: #2563eb;
-  }
-
-  .dark,
-  :root[data-theme="dark"] {
-    --nav-active-bg: rgba(96, 165, 250, 0.16);
-    --nav-active-fg: #bfdbfe;
-    --nav-inactive-fg: #94a3b8;
-    --nav-marker: #60a5fa;
   }
 }
 
@@ -175,9 +160,14 @@ body {
 }
 
 .page-subtitle {
-  color: var(--muted-foreground);
+  color: #334155;
   font-weight: 500;
   font-size: 0.95rem;
+}
+
+html.dark .page-subtitle,
+html[data-theme="dark"] .page-subtitle {
+  color: #e2e8f0;
 }
 
 .dash-page {
@@ -340,4 +330,18 @@ body {
 
 @theme inline {
   --color-destructive-foreground: var(--destructive-foreground);
+}
+
+html {
+  --nav-active-bg: #e8f0fe;
+  --nav-active-fg: #1d4ed8;
+  --nav-inactive-fg: #475569;
+  --nav-marker: #2563eb;
+}
+html.dark,
+html[data-theme="dark"] {
+  --nav-active-bg: rgba(96, 165, 250, 0.16);
+  --nav-active-fg: #bfdbfe;
+  --nav-inactive-fg: #94a3b8;
+  --nav-marker: #93c5fd;
 }

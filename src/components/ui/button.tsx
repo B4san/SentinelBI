@@ -6,9 +6,9 @@ const buttonVariants = {
   base: "inline-flex items-center justify-center whitespace-nowrap rounded-full text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--ring)] disabled:pointer-events-none disabled:opacity-50",
   variants: {
     variant: {
-      default: "bg-[var(--primary)] text-[var(--primary-foreground)] soft-shadow hover:bg-[var(--primary)]/90 hover:-translate-y-0.5",
+      default: "bg-[#1e40af] text-white hover:bg-[#1d4ed8] hover:-translate-y-0.5 font-semibold",
       destructive: "bg-[var(--destructive)] text-[var(--destructive-foreground)] shadow-sm hover:bg-[var(--destructive)]/90",
-      outline: "border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)]",
+      outline: "border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)]",
       secondary: "bg-[var(--secondary)] text-[var(--secondary-foreground)] shadow-sm hover:bg-[var(--secondary)]/80",
       ghost: "hover:bg-[var(--secondary)] hover:text-[var(--foreground)] text-[var(--muted-foreground)]",
       link: "text-[var(--primary)] underline-offset-4 hover:underline",
@@ -16,7 +16,7 @@ const buttonVariants = {
     },
     size: {
       default: "h-11 px-6 py-2",
-      sm: "h-9 rounded-full px-4 text-xs",
+      sm: "h-10 rounded-full px-4 text-sm font-semibold",
       lg: "h-12 rounded-full px-8",
       icon: "h-11 w-11",
     },

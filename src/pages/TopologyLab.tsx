@@ -14,7 +14,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { useStore } from '../store';
 import { Button } from '../components/ui/button';
-import { EmptyState } from '../components/arc/empty-state/empty-state';
+import { HonestEmpty } from '../components/HonestEmpty';
 import { Save, Upload, X } from 'lucide-react';
 import {
   buildTopology,
@@ -25,13 +25,17 @@ import {
   type TopologyStatus,
 } from '../lib/topology/buildTopology';
 
-const STATUS_COLOR: Record<TopologyStatus, string> = {
-  ok: 'var(--success)',
-  fallback: 'var(--warning)',
-  error: 'var(--danger)',
-  idle: 'var(--muted-foreground)',
-  running: 'var(--nav-marker)',
+const STATUS_COLOR: Record<TopologyStatus, { light: string; dark: string }> = {
+  ok: { light: '#059669', dark: '#34d399' },
+  fallback: { light: '#d97706', dark: '#fbbf24' },
+  error: { light: '#e11d48', dark: '#fb7185' },
+  idle: { light: '#64748b', dark: '#94a3b8' },
+  running: { light: '#2563eb', dark: '#60a5fa' },
 };
+
+function statusColor(status: TopologyStatus, mode: 'light' | 'dark') {
+  return STATUS_COLOR[status][mode];
+}
 
 const KIND_LABEL: Record<TopologyNodeKind, string> = {
   source: 'Source',
@@ -53,21 +57,27 @@ function flowNodes(models: TopologyNodeModel[]): Node[] {
   }));
 }
 
-function flowEdges(graphEdges: ReturnType<typeof buildTopology>['edges']): Edge[] {
+function flowEdges(graphEdges: ReturnType<typeof buildTopology>['edges'], mode: 'light' | 'dark'): Edge[] {
   return graphEdges.map((edge) => ({
     id: edge.id,
     source: edge.source,
     target: edge.target,
     label: edge.label,
     animated: edge.animated || edge.status === 'running',
-    style: { stroke: STATUS_COLOR[edge.status], strokeWidth: 2 },
-    labelStyle: { fill: 'var(--foreground)', fontSize: 11, fontWeight: 600 },
-    labelBgStyle: { fill: 'var(--card)' },
+    style: { stroke: statusColor(edge.status, mode), strokeWidth: 2.5 },
+    labelStyle: { fill: mode === 'dark' ? '#e8eef7' : '#0f172a', fontSize: 11, fontWeight: 600 },
+    labelBgStyle: { fill: mode === 'dark' ? '#141c2e' : '#ffffff' },
   }));
 }
 
 function LineageNode({ data }: { data: { model: TopologyNodeModel } }) {
   const node = data.model;
+  const bar =
+    node.status === 'ok' ? 'var(--success)'
+    : node.status === 'fallback' ? 'var(--warning)'
+    : node.status === 'error' ? 'var(--danger)'
+    : node.status === 'running' ? 'var(--nav-marker)'
+    : 'var(--muted-foreground)';
   return (
     <div
       className="rounded-xl border px-3 py-2 min-w-[160px] max-w-[220px] shadow-sm"
@@ -75,12 +85,12 @@ function LineageNode({ data }: { data: { model: TopologyNodeModel } }) {
         background: 'var(--card)',
         color: 'var(--card-foreground)',
         borderColor: 'var(--border)',
-        borderLeft: `4px solid ${STATUS_COLOR[node.status]}`,
+        borderLeft: `4px solid ${bar}`,
       }}
     >
-      <p className="text-[10px] uppercase tracking-wide text-[var(--muted-foreground)]">{KIND_LABEL[node.kind]}</p>
+      <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--foreground)]">{KIND_LABEL[node.kind]}</p>
       <p className="text-[13px] font-semibold leading-snug mt-0.5 break-words">{node.label}</p>
-      {node.subtitle && <p className="text-[11px] text-[var(--muted-foreground)] mt-1 break-words">{node.subtitle}</p>}
+      {node.subtitle && <p className="text-[11px] font-medium text-[var(--foreground)] mt-1 break-words">{node.subtitle}</p>}
     </div>
   );
 }
@@ -119,9 +129,9 @@ export function TopologyLab() {
 
   useEffect(() => {
     setNodes(flowNodes(graph.nodes));
-    setEdges(flowEdges(graph.edges));
+    setEdges(flowEdges(graph.edges, appearance.mode));
     setSelected(null);
-  }, [graph]);
+  }, [graph, appearance.mode]);
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     setNodes((current) => applyNodeChanges(changes, current));
@@ -139,7 +149,7 @@ export function TopologyLab() {
   if (!activeSpace) return null;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] animate-in fade-in duration-500">
+    <div className="flex flex-col h-[calc(100vh-8rem)] min-h-0">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
         <div>
           <h2 className="page-title">Pipeline topology</h2>
@@ -147,11 +157,11 @@ export function TopologyLab() {
         </div>
         <div className="flex items-center gap-2">
           {!graph.empty && (
-            <span className="text-sm text-[var(--muted-foreground)]">
+            <span className="text-sm font-medium text-[var(--foreground)]">
               {graph.nodes.length} nodes · {graph.edges.filter((e) => e.status === 'ok').length} healthy edges
             </span>
           )}
-          <Button size="sm" onClick={handleSave} disabled={graph.empty}>
+          <Button variant="outline" onClick={handleSave} disabled={graph.empty}>
             <Save className="w-4 h-4 mr-2" /> Save layout
           </Button>
         </div>
@@ -159,7 +169,7 @@ export function TopologyLab() {
 
       {graph.empty ? (
         <div className="flex-1 surface-card rounded-3xl grid place-items-center">
-          <EmptyState
+          <HonestEmpty
             title="Upload a CSV to see your pipeline"
             description="Sources, datasets, the configured model, and generated dashboards appear here once this space has data."
             action={

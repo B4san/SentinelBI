@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   LayoutDashboard,
@@ -21,7 +21,6 @@ import {
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
 import { ThemeToggle } from '../shell/ThemeToggle';
 
 function initialsFor(name?: string) {
@@ -35,7 +34,6 @@ export function AppLayout() {
   const spaces = useStore((state) => state.spaces);
   const logout = useStore((state) => state.logout);
   const navigate = useNavigate();
-  const location = useLocation();
   const { spaceId } = useParams();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -205,22 +203,16 @@ export function AppLayout() {
                 </div>
               )}
             </div>
-            <div className="h-11 w-11 rounded-full bg-[var(--nav-active-fg)] border border-[var(--border)] hidden sm:flex items-center justify-center text-[var(--primary-foreground)] font-bold text-sm">
+            <div className="h-11 w-11 rounded-full bg-[#1e40af] border border-[var(--border)] hidden sm:flex items-center justify-center text-white font-bold text-sm">
               {initialsFor(user?.name)}
             </div>
           </div>
         </header>
 
         <main className="flex-1 overflow-x-hidden overflow-y-auto relative p-4 md:p-8 pt-2 custom-scrollbar">
-          <motion.div
-            key={location.pathname}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25 }}
-            className="h-full pt-3 w-full max-w-[1680px] mx-auto"
-          >
+          <div className="h-full pt-3 w-full max-w-[1680px] mx-auto">
             <Outlet />
-          </motion.div>
+          </div>
         </main>
       </div>
     </div>
