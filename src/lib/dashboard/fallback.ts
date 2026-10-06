@@ -232,7 +232,7 @@ function rankKpis(pool: DerivedKpi[], intent: string | undefined, dataset: Dashb
     const score = (kpi: DerivedKpi) => {
       let n = 0;
       if (/opex vs budget|hardware opex/i.test(kpi.title)) n -= 6;
-      if (/\baov\b/.test(kpi.title) && !names.some((name) => /(^|_)units?$/.test(name.toLowerCase()) || /order/i.test(name))) n += 12;
+      if (/\baov\b/.test(kpi.title) && !names.some((name) => /^(units?|qty|quantity)$/i.test(name) || /(^|_)units$/.test(name.toLowerCase()) || /order/i.test(name))) n += 12;
       if (/\baov\b|gross margin|discount rate/i.test(kpi.title)) n -= 4;
       if (/total budget opex|total opex/i.test(kpi.title) && !/vs/.test(kpi.title)) n += 8;
       if (wanted && kpi.title.toLowerCase().split(/\s+/).some((word) => wanted.includes(word))) n -= 2;
