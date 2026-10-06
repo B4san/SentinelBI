@@ -199,26 +199,8 @@ If 'append': Detect if these datasets can be safely appended (union). Return a J
 
 Respond ONLY with valid JSON, nothing else. No markdown wrappers.`;
 
-      let res = await fetch('/api/gemini', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('sentinel_api_key') || '' },
-        body: JSON.stringify({
-          model: 'gemini-3-flash-preview',
-          contents: [{ role: 'user', parts: [{ text: prompt }] }]
-        })
-      });
-      if (!res.ok) {
-        res = await fetch('/api/gemini', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('sentinel_api_key') || '' },
-          body: JSON.stringify({
-             model: 'gemini-3-flash-preview', // fall back if first attempt fails
-             contents: [{ role: 'user', parts: [{ text: prompt }] }]
-          })
-        });
-      }
-      
-      const jsonResponse = await res.json();
+      const { generateContent } = await import('../lib/ai/client');
+      const jsonResponse = await generateContent({ contents: prompt, json: true });
       let text = (jsonResponse.text || "").replace(/```json\n?/g, '').replace(/```\n?/g, '');
       const parsed = JSON.parse(text);
       setAiResult({ action, ...parsed });

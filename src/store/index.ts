@@ -1,5 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { DashboardSpec, SavedDashboard } from '../lib/dashboard/types';
+import type { ProviderConfig, ProviderId } from '../lib/ai/types';
+import { DEFAULT_AI_SETTINGS } from '../lib/ai/client';
 
 export interface User {
   id: string;
@@ -67,6 +70,10 @@ export interface Space {
   topologyNodes: any[];
   topologyEdges: any[];
   visualInsights: VisualInsight[];
+  dashboardSpec?: DashboardSpec;
+  savedDashboards?: SavedDashboard[];
+  activeDashboardId?: string;
+  globalFilters?: { field: string; op: string; value: string }[];
   
   // Execution Context
   executionState: 'idle' | 'running' | 'completed';
@@ -112,17 +119,28 @@ export interface Space {
   };
 }
 
+export interface AppAppearance {
+  mode: 'light' | 'dark';
+}
+
 export interface AppState {
   user: User | null;
   spaces: Space[];
+  appearance: AppAppearance;
+  aiSettings: ProviderConfig;
 
   login: (user: Omit<User, 'isAuthenticated'>) => void;
   logout: () => void;
+  setAppearance: (appearance: AppAppearance) => void;
+  setAiSettings: (settings: Partial<ProviderConfig> & { provider?: ProviderId }) => void;
 
   createSpace: (space: Space) => void;
   deleteSpace: (id: string) => void;
   updateSpace: (id: string, updates: Partial<Space>) => void;
   toggleFavoriteSpace: (id: string) => void;
+  saveDashboard: (spaceId: string, name: string, spec: DashboardSpec) => void;
+  applySavedDashboard: (spaceId: string, dashboardId: string) => void;
+  deleteSavedDashboard: (spaceId: string, dashboardId: string) => void;
 
   addGovernanceLog: (spaceId: string, log: Omit<GovernanceLog, 'id' | 'timestamp'>) => void;
   addSecurityEvent: (spaceId: string, event: Omit<GovernanceLog, 'id' | 'timestamp'>) => void;
@@ -136,12 +154,18 @@ export const useStore = create<AppState>()(
     (set, get) => ({
       user: null,
       spaces: [],
+      appearance: { mode: 'light' },
+      aiSettings: { ...DEFAULT_AI_SETTINGS },
 
       login: (userData) => set({ user: { ...userData, isAuthenticated: true } }),
-      logout: () => set({ user: null, spaces: [] }),
+      logout: () => set({ user: null }),
+      setAppearance: (appearance) => set({ appearance }),
+      setAiSettings: (settings) => set((state) => ({ aiSettings: { ...state.aiSettings, ...settings } })),
       clearAllData: () => {
         localStorage.removeItem('sentinel-bi-state');
-        set({ user: null, spaces: [] });
+        localStorage.removeItem('sentinel_ai_settings');
+        localStorage.removeItem('sentinel_api_key');
+        set({ user: null, spaces: [], aiSettings: { ...DEFAULT_AI_SETTINGS }, appearance: { mode: 'light' } });
       },
 
       createSpace: (space) => set((state) => ({ spaces: [space, ...state.spaces] })),
@@ -199,7 +223,59 @@ export const useStore = create<AppState>()(
         set((state) => ({
           spaces: state.spaces.map(s => s.id === spaceId ? { ...s, topologyNodes: nodes, topologyEdges: edges } : s)
         }));
-      }
+      },
+
+      saveDashboard: (spaceId, name, spec) => {
+        const now = new Date().toISOString();
+        const saved: SavedDashboard = {
+          id: `dash-${Date.now()}`,
+          name,
+          spec,
+          createdAt: now,
+          updatedAt: now,
+        };
+        set((state) => ({
+          spaces: state.spaces.map((s) =>
+            s.id === spaceId
+              ? {
+                  ...s,
+                  savedDashboards: [saved, ...(s.savedDashboards || [])],
+                  activeDashboardId: saved.id,
+                  dashboardSpec: spec,
+                  updatedAt: now,
+                }
+              : s,
+          ),
+        }));
+      },
+
+      applySavedDashboard: (spaceId, dashboardId) => {
+        set((state) => ({
+          spaces: state.spaces.map((s) => {
+            if (s.id !== spaceId) return s;
+            const found = (s.savedDashboards || []).find((d) => d.id === dashboardId);
+            if (!found) return s;
+            return {
+              ...s,
+              activeDashboardId: dashboardId,
+              dashboardSpec: found.spec,
+              visualInsights: [found.spec as unknown as VisualInsight],
+              generatedCode: JSON.stringify(found.spec, null, 2),
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        }));
+      },
+
+      deleteSavedDashboard: (spaceId, dashboardId) => {
+        set((state) => ({
+          spaces: state.spaces.map((s) =>
+            s.id === spaceId
+              ? { ...s, savedDashboards: (s.savedDashboards || []).filter((d) => d.id !== dashboardId) }
+              : s,
+          ),
+        }));
+      },
     }),
     {
       name: 'sentinel-bi-state',

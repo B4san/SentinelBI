@@ -99,15 +99,10 @@ ${promptContext}` }]
         ]
       };
 
-      const res = await fetch('/api/gemini', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('sentinel_api_key') || '' },
-        body: JSON.stringify(payload)
-      });
+      const { generateContent } = await import('../lib/ai/client');
+      const data = await generateContent(payload);
       
       setProgress(70);
-
-      const data = await res.json();
       const generatedText = data.text || "Report generation succeeded, but no text returned.";
       
       const overallTruth = computeDataTruth(datasetsToAnalyze.flatMap(d => d.data));

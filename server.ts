@@ -1,23 +1,28 @@
-import express from "express";
-import path from "path";
-import { createServer as createViteServer } from "vite";
-import geminiHandler from "./api/gemini";
-import { GoogleGenAI } from '@google/genai';
+import { config as loadEnv } from 'dotenv';
+import express from 'express';
+import path from 'path';
+import { createServer as createViteServer } from 'vite';
+import geminiHandler from './api/gemini';
+import { aiGenerateHandler, aiModelsHandler, aiProvidersHandler } from './api/ai';
+
+loadEnv({ path: '.env.local' });
+loadEnv();
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT || 3000);
 
-  app.use(express.json());
+  app.use(express.json({ limit: '4mb' }));
 
-  // API Route for Gemini
-  app.post("/api/gemini", geminiHandler);
+  app.post('/api/gemini', geminiHandler);
+  app.post('/api/ai', aiGenerateHandler);
+  app.get('/api/ai/models', aiModelsHandler);
+  app.get('/api/ai/providers', aiProvidersHandler);
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: "spa",
+      appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
@@ -28,7 +33,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }

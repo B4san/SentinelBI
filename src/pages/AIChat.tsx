@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { computeDataTruth } from '../lib/DataTruthEngine';
+import { generateContent, loadAiSettings } from '../lib/ai/client';
 
 export function AIChat() {
   const { spaceId } = useParams();
@@ -72,18 +73,8 @@ OUTPUT A STRICT JSON OBJECT ONLY. NO CODE BLOCKS OR MARKDOWN.
   "detailedReason": "short architectural rationale"
 }`;
 
-      const secRes = await fetch('/api/gemini', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('sentinel_api_key') || '' },
-        body: JSON.stringify({
-          model: 'gemini-3-flash-preview',
-          contents: securityPrompt
-        })
-      });
+      const secData = await generateContent({ contents: securityPrompt, json: true });
 
-      if (!secRes.ok) throw new Error('Security proxy failed.');
-      
-      const secData = await secRes.json();
       let securityDecision;
       try {
          const cleanText = (secData.text || '').replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
@@ -153,12 +144,9 @@ ${Object.entries(truth.categoricalSummary).map(([col, stat]) => `  - ${col}: ${s
         });
       }
 
-      const response = await fetch('/api/gemini', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('sentinel_api_key') || '' },
-        body: JSON.stringify({
-          model: 'gemini-3-flash-preview',
-          contents: `You are the Principal Staff Engineer, Enterprise AI Architect, and Senior Diagnostic Data Analyzer for Sentinel BI. The user is asking about their dataset.
+      const responsePayload = await generateContent({
+        json: true,
+        contents: `You are the Principal Staff Engineer, Enterprise AI Architect, and Senior Diagnostic Data Analyzer for Sentinel BI. The user is asking about their dataset.
           You MUST use the following computed context to answer any questions about metrics, sums, averages, min/max, or overall volume.
           DO NOT behave as a generic chatbot. Behave as a senior consultant conducting an investigation.
           Do NOT make up any numbers. If the user asks for a metric not in the summaries, explicitly state that no evidence exists in the loaded datasets to support the calculation.
@@ -185,15 +173,8 @@ ${Object.entries(truth.categoricalSummary).map(([col, stat]) => `  - ${col}: ${s
              "chunkTrace": "Explanation of reasoning path"
           }
           Do not include any other text outside the JSON object.`
-        })
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to generate response from server');
-      }
-      
-      const data = await response.json();
-      const rawText = data.text || "{}";
+      const rawText = responsePayload.text || '{}';
       
       let parsedOutcome;
       try {
@@ -256,7 +237,7 @@ ${Object.entries(truth.categoricalSummary).map(([col, stat]) => `  - ${col}: ${s
            <p className="text-gray-500 font-medium ml-1">Collaborate natively with bounded multi-agent systems via natural language.</p>
         </div>
         <Badge variant="outline" className="border-blue-200 text-blue-700 bg-blue-50 font-mono shadow-sm px-3 py-1">
-           Model: Gemini Pro
+           {loadAiSettings().provider} · {loadAiSettings().model}
         </Badge>
       </div>
 

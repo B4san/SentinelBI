@@ -8,9 +8,9 @@ const buttonVariants = {
     variant: {
       default: "bg-[var(--primary)] text-[var(--primary-foreground)] soft-shadow hover:bg-[var(--primary)]/90 hover:-translate-y-0.5",
       destructive: "bg-[var(--destructive)] text-[var(--destructive-foreground)] shadow-sm hover:bg-[var(--destructive)]/90",
-      outline: "border border-gray-200 bg-white hover:bg-gray-50 hover:text-gray-900",
+      outline: "border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)]",
       secondary: "bg-[var(--secondary)] text-[var(--secondary-foreground)] shadow-sm hover:bg-[var(--secondary)]/80",
-      ghost: "hover:bg-gray-100 hover:text-gray-900 text-gray-500",
+      ghost: "hover:bg-[var(--secondary)] hover:text-[var(--foreground)] text-[var(--muted-foreground)]",
       link: "text-[var(--primary)] underline-offset-4 hover:underline",
       glass: "bg-white/50 backdrop-blur-md text-[var(--foreground)] hover:bg-white/80 border border-white/20",
     },

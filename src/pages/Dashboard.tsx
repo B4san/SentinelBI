@@ -39,12 +39,8 @@ export function Dashboard() {
         ]
       };
       
-      const res = await fetch('/api/gemini', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('sentinel_api_key') || '' },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
+      const { generateContent } = await import('../lib/ai/client');
+      const data = await generateContent(payload);
       
       setChartExplanation(data.text || "Intelligence volume confirms a healthy baseline based on actual workspace events.");
     } catch (e) {
@@ -73,7 +69,7 @@ export function Dashboard() {
   // Real logs
   const govCount = activeSpace.governanceLogs?.length || 0;
   const secCount = activeSpace.securityEvents?.length || 0;
-  const failedExecutions = activeSpace.executionTimeline.filter(t => t.status === 'failed').length;
+  const failedExecutions = (activeSpace.executionTimeline || []).filter(t => t.status === 'failed').length;
 
   const aiConfidence = datasetsToAnalyze.length > 0 ? Math.max(0, dataQuality - (failedExecutions * 5)) : 0;
   const govIntegrity = datasetsToAnalyze.length > 0 ? Math.max(0, 100 - (secCount * 10)) : 0;

@@ -1,17 +1,17 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useStore } from '../store';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { 
   Code, LayoutTemplate, Activity, Play, CheckCircle2, 
-  Terminal, ShieldCheck, Database, BrainCircuit, Loader2,
+  Terminal, BrainCircuit, Loader2,
   Maximize2
 } from 'lucide-react';
-import { AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart as RechartsPie, Pie, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ScatterChart, Scatter } from 'recharts';
-import { D3Visual } from '../components/D3Visual';
-import { computeDataTruth } from '../lib/DataTruthEngine';
+import { generateDashboardSpec } from '../lib/dashboard/generate';
+import { validateDashboardSpec } from '../lib/dashboard/validate';
+import { toDashboardDatasets } from '../lib/sampleData';
+import { DashboardCanvas } from '../components/dashboard/DashboardCanvas';
 
 export function CodeCanvas() {
   const { spaceId } = useParams();
@@ -20,7 +20,7 @@ export function CodeCanvas() {
   const activeSpace = spaces.find(s => s.id === spaceId);
   const [viewMode, setViewMode] = useState<'split' | 'code' | 'visual'>('split');
 
-  const { executionState = 'idle', generatedCode = '', executionTimeline = [], promptContext = '', datasets = [], parsedData = [] } = activeSpace || {};
+  const { executionState = 'idle', generatedCode = '', executionTimeline = [], promptContext = '' } = activeSpace || {};
   
   const [localCode, setLocalCode] = useState(generatedCode);
   const [previewData, setPreviewData] = useState<any>(activeSpace?.visualInsights?.[0] || null);
@@ -29,7 +29,7 @@ export function CodeCanvas() {
   useEffect(() => {
     const handler = setTimeout(() => {
       try {
-        const parsed = JSON.parse(localCode);
+        const parsed = validateDashboardSpec(JSON.parse(localCode));
         setPreviewData(parsed);
         // Persist when correctly parsed
         const updatedInsights = [...(activeSpace?.visualInsights || [])];
@@ -87,109 +87,22 @@ export function CodeCanvas() {
        updateSpace(spaceId, { executionTimeline: updatedTimeline });
     }
 
-    // Call Gemini to generate actual code, injecting Computed Data
     try {
-       const datasetsToAnalyze = (activeSpace.datasets && activeSpace.datasets.length > 0) 
-         ? activeSpace.datasets 
-         : activeSpace.parsedData 
-           ? [{ id: 'legacy', name: 'Legacy Dataset', data: activeSpace.parsedData, columns: activeSpace.columns || [] }] 
-           : [];
-
-       let datasetSummary = '';
-
-       if (datasetsToAnalyze.length === 0) {
-         datasetSummary += "No datasets available.\n";
-       } else {
-         datasetsToAnalyze.forEach(ds => {
-           const truth = computeDataTruth(ds.data);
-           datasetSummary += `Dataset: ${ds.name || ds.id}
-       Fields: ${ds.columns?.map((c: any) => c.name).join(', ')}
-       Row Count: ${truth.rowCount}
-       Numeric Summaries:
-       ${Object.entries(truth.numericSummary).map(([col, stat]) => `- ${col}: Sum=${stat.sum.toFixed(2)}, Avg=${stat.avg.toFixed(2)}, Min=${stat.min}, Max=${stat.max}`).join('\n')}
-       `;
-         });
-       }
-       
-       const prompt = `You are a Visual Code Agent supported by a deterministic Data Engine. Use the computed summaries below to generate the dashboard.
-       Computed Real Data Summaries:
-       ${datasetSummary}
-       
-       User Intent: ${promptContext || 'Analyze my data overview'}
-       
-       KNOWLEDGE PACK (D3.js & Charting Capabilities):
-       You MUST formulate your dashboard using our strictly supported chart types.
-       1. Recharts Types: "bar", "line", "area", "pie", "scatter". 
-       2. D3.js Types: "force", "pack", "radial", "tree".
-       
-       VARIETY IS REQUIRED. Do not just use bar charts. Analyze the data and pick the best representation:
-       - Use "pie" for categorical compositions.
-       - Use "line" or "area" for temporal or sequential series.
-       - Use "scatter" for distributions and correlations.
-       - Use "force" (D3) for network graphs showing relationships between entities.
-       - Use "pack" (D3) for hierarchical circle-packing or clustered counts.
-       - Use "radial" (D3) for circular visualizations or periodic patterns.
-       - Use "tree" (D3) for clear organizational hierarchies or parent-child structures.
-       
-       CRITICAL INSTRUCTIONS:
-       1. For KPIs, YOU MUST inject EXACT values from the "Numeric Summaries" above. DO NOT use placeholders. If the user asks for total revenue, find revenue sum and use it inside "value". Format cleanly (e.g. "1,450" or "$1.2M"). 
-       2. NEVER hallucinate string tags or unrelated keys for chart axis fields. Use exact column names from the "Dataset fields" list.
-       3. ALWAYS mix and match chart types depending on data semantics. You MUST include at least one D3.js chart type ("force", "pack", "radial", or "tree") if the data context has potential hierarchies or categorizations.
-       4. Return "fontFamily": "font-sans" | "font-mono" | "font-grotesk" | "font-outfit" | "font-serif" | "font-roboto"
-       
-       OUTPUT A STRICT JSON OBJECT ONLY.
-       Schema:
-       {
-         "title": "Data Dashboard",
-         "fontFamily": "font-sans | font-mono | font-grotesk | font-outfit | font-serif | font-roboto",
-         "globalBg": "#HEX",
-         "borderRadius": "rounded-none | rounded-md | rounded-xl | rounded-2xl | rounded-3xl | rounded-full",
-         "kpis": [{ "label": "string", "value": "string (ACTUAL VALUE)", "trend": "string (optional)" }],
-         "charts": [
-           { 
-             "title": "string",
-             "type": "bar" | "line" | "area" | "pie" | "scatter" | "force" | "pack" | "radial" | "tree",
-             "xAxisField": "columnName",
-             "yAxisField": "columnName",
-             "groupField": "optionalColumnName",
-             "sizeField": "optionalColumnName",
-             "color": "#HEX",
-             "bgColor": "#HEX"
-           }
-         ]
-       }
-       `;
-
-       const response = await fetch('/api/gemini', {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('sentinel_api_key') || '' },
-         body: JSON.stringify({ model: 'gemini-3-flash-preview', contents: prompt })
-       });
-
-       let generatedText = '';
-       let generatedJson = null;
-
-       if (response.ok) {
-         const data = await response.json();
-         generatedText = data.text || '';
-         const rawJsonString = generatedText.replace(/^\`\`\`(json)?/gm, '').replace(/\`\`\`$/gm, '').trim();
-         try {
-            generatedJson = JSON.parse(rawJsonString);
-
-            updateSpace(spaceId, { 
-               executionState: 'completed', 
-               generatedCode: JSON.stringify(generatedJson, null, 2),
-               visualInsights: [generatedJson as any]
-            });
-         } catch (err) {
-            updateSpace(spaceId, { executionState: 'completed', generatedCode: `// Failed to parse JSON\n${generatedText}` });
-         }
-       } else {
-         updateSpace(spaceId, { executionState: 'completed', generatedCode: '// API Error' });
-       }
+      const result = await generateDashboardSpec({
+        title: activeSpace.title,
+        intent: promptContext || 'Analyze my data overview',
+        datasets: toDashboardDatasets(activeSpace),
+      });
+      const spec = result.spec;
+      updateSpace(spaceId, {
+        executionState: 'completed',
+        generatedCode: JSON.stringify(spec, null, 2),
+        visualInsights: [spec as never],
+        dashboardSpec: spec,
+      });
     } catch (e) {
-       console.error("Pipeline failure:", e);
-       updateSpace(spaceId, { executionState: 'completed', generatedCode: '// Fallback rendered code' });
+      console.error('Pipeline failure:', e);
+      updateSpace(spaceId, { executionState: 'completed', generatedCode: '// Fallback rendered code' });
     }
   };
 
@@ -215,8 +128,6 @@ export function CodeCanvas() {
       </div>
     );
   }
-
-  const chartData = datasets[0]?.data || parsedData || [];
 
   return (
     <div className="flex flex-col h-full space-y-6 animate-in fade-in duration-500">
@@ -329,128 +240,12 @@ export function CodeCanvas() {
                         <Play className="w-4 h-4 text-emerald-500 mr-2" /> Live Render Preview
                      </span>
                   </div>
-                  <div className="p-8 overflow-auto custom-scrollbar flex-1">
+                  <div className="p-4 md:p-6 overflow-auto custom-scrollbar flex-1">
                      {previewData ? (
-                        <div style={{ backgroundColor: previewData.globalBg || '' }} className={`space-y-8 p-6 -mx-6 rounded-[2.5rem] relative ${previewData.fontFamily || 'font-sans'} ${!previewData.globalBg && 'bg-gray-50/50'}`}>
-                           <h3 className="text-2xl font-bold tracking-tight text-gray-900">{previewData.title}</h3>
-                           
-                           <div className="grid grid-cols-3 gap-6">
-                              {previewData.kpis?.map((kpi: any, i: number) => (
-                                 <Card key={i} className={`border-none soft-shadow bg-white ${previewData.borderRadius || 'rounded-3xl'}`}>
-                                    <CardContent className="p-6">
-                                       <p className="text-[13px] font-bold uppercase tracking-wider text-gray-400">{kpi.label}</p>
-                                       <p className="text-[32px] font-extrabold mt-3 text-gray-900 tracking-tight">{kpi.value}</p>
-                                       {kpi.trend && <p className="text-sm font-semibold text-emerald-500 mt-2">{kpi.trend}</p>}
-                                    </CardContent>
-                                 </Card>
-                              ))}
-                           </div>
-
-                           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                              {previewData.charts?.map((chart: any, i: number) => {
-                                 let localChartData = chartData;
-                                 if (chart.filterField && chart.filterValue && chart.filterOp) {
-                                     localChartData = localChartData.filter((d: any) => {
-                                         const val = d[chart.filterField];
-                                         const numVal = Number(val);
-                                         const fVal = chart.filterValue;
-                                         const numFVal = Number(fVal);
-                  
-                                         switch (chart.filterOp) {
-                                             case 'equals': return String(val || '').toLowerCase() === String(fVal || '').toLowerCase();
-                                             case 'not_equals': return String(val || '').toLowerCase() !== String(fVal || '').toLowerCase();
-                                             case 'contains': return String(val || '').toLowerCase().includes(String(fVal || '').toLowerCase());
-                                             case 'not_contains': return !String(val || '').toLowerCase().includes(String(fVal || '').toLowerCase());
-                                             case 'starts_with': return String(val || '').toLowerCase().startsWith(String(fVal || '').toLowerCase());
-                                             case 'ends_with': return String(val || '').toLowerCase().endsWith(String(fVal || '').toLowerCase());
-                                             case 'gt': return !isNaN(numVal) && !isNaN(numFVal) && val !== '' && fVal !== '' ? numVal > numFVal : String(val || '') > String(fVal || '');
-                                             case 'gte': return !isNaN(numVal) && !isNaN(numFVal) && val !== '' && fVal !== '' ? numVal >= numFVal : String(val || '') >= String(fVal || '');
-                                             case 'lt': return !isNaN(numVal) && !isNaN(numFVal) && val !== '' && fVal !== '' ? numVal < numFVal : String(val || '') < String(fVal || '');
-                                             case 'lte': return !isNaN(numVal) && !isNaN(numFVal) && val !== '' && fVal !== '' ? numVal <= numFVal : String(val || '') <= String(fVal || '');
-                                             default: return true;
-                                         }
-                                     });
-                                 }
-
-                                 const isD3 = ['force', 'radial', 'pack', 'tree', 'scatter'].includes(chart.type);
-                                 
-                                 return (
-                                    <Card key={i} style={{ backgroundColor: chart.bgColor || '#ffffff' }} className={`border-none soft-shadow p-2 ${previewData.borderRadius || 'rounded-3xl'}`}>
-                                       <CardHeader className="px-6 pt-6 pb-2">
-                                          <CardTitle className="text-lg font-bold text-gray-900">{chart.title}</CardTitle>
-                                       </CardHeader>
-                                       <CardContent className="px-6 pb-6">
-                                          <div className="h-[240px] w-full mt-4">
-                                             {isD3 ? (
-                                                <D3Visual data={localChartData.slice(0, 100)} config={chart} />
-                                             ) : (
-                                                <ResponsiveContainer width="100%" height="100%">
-                                                   {chart.type === 'bar' ? (
-                                                      <BarChart data={localChartData.slice(0, 50)} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                                                         <XAxis dataKey={chart.xAxisField} stroke="#cbd5e1" fontSize={11} tickLine={false} axisLine={false} dy={10} />
-                                                         <YAxis hide />
-                                                         <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: 'none', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} itemStyle={{ color: '#111827', fontWeight: 600 }} />
-                                                         <Bar dataKey={chart.yAxisField} fill={chart.color || '#3b82f6'} radius={[6, 6, 0, 0]} isAnimationActive={false} />
-                                                      </BarChart>
-                                                   ) : chart.type === 'line' ? (
-                                                      <LineChart data={localChartData.slice(0, 50)} margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
-                                                         <XAxis dataKey={chart.xAxisField} stroke="#cbd5e1" fontSize={11} tickLine={false} axisLine={false} dy={10} />
-                                                         <YAxis hide />
-                                                         <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: 'none', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} itemStyle={{ color: '#111827', fontWeight: 600 }} />
-                                                         <Line type="natural" dataKey={chart.yAxisField} stroke={chart.color || '#8b5cf6'} strokeWidth={3} dot={false} isAnimationActive={false} />
-                                                      </LineChart>
-                                                   ) : chart.type === 'pie' ? (
-                                                     <RechartsPie>
-                                                       <Pie
-                                                         data={localChartData.slice(0, 50)}
-                                                         dataKey={chart.yAxisField}
-                                                         nameKey={chart.xAxisField}
-                                                         cx="50%"
-                                                         cy="50%"
-                                                         outerRadius={80}
-                                                         fill={chart.color || '#3b82f6'}
-                                                         label
-                                                         isAnimationActive={false}
-                                                       >
-                                                         {localChartData.slice(0, 50).map((entry: any, index: number) => (
-                                                           <Cell key={`cell-${index}`} fill={['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#6366f1'][index % 7]} />
-                                                         ))}
-                                                       </Pie>
-                                                       <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: 'none', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} itemStyle={{ color: '#111827', fontWeight: 600 }} />
-                                                     </RechartsPie>
-                                                   ) : chart.type === 'scatter' ? (
-                                                     <ScatterChart margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
-                                                         <XAxis dataKey={chart.xAxisField} type="number" name={chart.xAxisField} stroke="#cbd5e1" fontSize={11} tickLine={false} axisLine={false} dy={10} />
-                                                         <YAxis dataKey={chart.yAxisField} type="number" name={chart.yAxisField} hide />
-                                                         <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ backgroundColor: '#ffffff', border: 'none', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} itemStyle={{ color: '#111827', fontWeight: 600 }} />
-                                                         <Scatter name="Data" data={localChartData.slice(0, 50)} fill={chart.color || '#8b5cf6'} isAnimationActive={false} />
-                                                     </ScatterChart>
-                                                   ) : (
-                                                      <AreaChart data={localChartData.slice(0, 50)} margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
-                                                         <defs>
-                                                            <linearGradient id={`color-cc-${i}`} x1="0" y1="0" x2="0" y2="1">
-                                                               <stop offset="5%" stopColor={chart.color || '#10b981'} stopOpacity={0.2}/>
-                                                               <stop offset="95%" stopColor={chart.color || '#10b981'} stopOpacity={0}/>
-                                                            </linearGradient>
-                                                         </defs>
-                                                         <XAxis dataKey={chart.xAxisField} stroke="#cbd5e1" fontSize={11} tickLine={false} axisLine={false} dy={10} />
-                                                         <YAxis hide />
-                                                         <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: 'none', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} itemStyle={{ color: '#111827', fontWeight: 600 }} />
-                                                         <Area type="natural" dataKey={chart.yAxisField} stroke={chart.color || '#10b981'} strokeWidth={3} fillOpacity={1} fill={`url(#color-cc-${i})`} isAnimationActive={false} />
-                                                      </AreaChart>
-                                                   )}
-                                                </ResponsiveContainer>
-                                             )}
-                                          </div>
-                                       </CardContent>
-                                    </Card>
-                                 );
-                              })}
-                           </div>
-                        </div>
+                        <DashboardCanvas spec={previewData} datasets={toDashboardDatasets(activeSpace)} />
                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 font-medium text-[15px] bg-white rounded-2xl border border-dashed border-gray-200">
-                           <LayoutTemplate className="w-10 h-10 mb-4 text-gray-300" />
+                        <div className="w-full h-full flex flex-col items-center justify-center text-[var(--muted-foreground)] font-medium text-[15px] bg-[var(--card)] rounded-2xl border border-dashed border-[var(--border)]">
+                           <LayoutTemplate className="w-10 h-10 mb-4 opacity-40" />
                            <p>No valid render output available.</p>
                         </div>
                      )}
