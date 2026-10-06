@@ -467,6 +467,7 @@ export function validateDashboardSpec(raw: unknown, fallback?: Partial<Dashboard
     filters: Array.isArray(rec.filters)
       ? rec.filters.map(sanitizeFilter).filter((f): f is NonNullable<typeof f> => Boolean(f))
       : undefined,
+    generatedBy: asString(rec.generatedBy, fallback?.generatedBy) || undefined,
   };
 }
 

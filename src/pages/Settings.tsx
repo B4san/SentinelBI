@@ -60,7 +60,9 @@ export function Settings() {
     setLoadingModels(true);
     try {
       const result = await fetchModels(aiSettings);
-      setModels(result.models);
+      const curated = def.curatedModels;
+      const live = result.models.filter((m) => !curated.some((c) => c.id === m.id));
+      setModels([...curated, ...live]);
       setModelSource(result.source);
     } catch (error) {
       setModels(def.curatedModels);
@@ -107,6 +109,7 @@ export function Settings() {
           </CardTitle>
           <CardDescription>
             OpenRouter and any OpenAI-compatible API, plus the original Gemini integration. Keys stay in this browser and are never committed.
+            For OpenRouter, <code>openrouter/free</code> routes each request to an available free model and is the default when no model is set.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -179,6 +182,24 @@ export function Settings() {
               Stream responses
             </label>
           </div>
+          {aiSettings.provider === 'openrouter' && (
+            <div className="flex flex-wrap gap-2">
+              {def.curatedModels.map((model) => (
+                <button
+                  key={model.id}
+                  type="button"
+                  onClick={() => setAiSettings({ model: model.id })}
+                  className={`rounded-full border px-3 py-1 text-xs ${
+                    aiSettings.model === model.id
+                      ? 'border-[var(--primary)] bg-[var(--accent)]'
+                      : 'border-[var(--border)]'
+                  }`}
+                >
+                  {model.label}
+                </button>
+              ))}
+            </div>
+          )}
           <p className="text-xs text-[var(--muted-foreground)]">
             Model list source: {modelSource}. {models.length} option{models.length === 1 ? '' : 's'} available.
           </p>

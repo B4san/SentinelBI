@@ -72,7 +72,7 @@ export function ChartRenderer({
   if (type === 'treemap' || widget.componentId === 'arc.treemap') {
     return (
       <div ref={ref} className="h-full w-full min-h-0">
-        <TreemapSvg data={data} xKey={xKey} yKey={yKey} colors={widget.colors || palette.chart} palette={palette} width={w} height={h} />
+        <TreemapSvg data={data} xKey={xKey} yKey={yKey} colors={widget.colors || palette.chart} palette={palette} width={w} height={h} highlight={highlight} onPointClick={onPointClick} />
       </div>
     );
   }
@@ -80,7 +80,7 @@ export function ChartRenderer({
   if (type === 'pie' || type === 'donut') {
     return (
       <div ref={ref} className="h-full w-full min-h-0">
-        <DonutSvg data={data} xKey={xKey} yKey={yKey} colors={widget.colors || palette.chart} donut={type === 'donut'} palette={palette} width={w} height={h} />
+        <DonutSvg data={data} xKey={xKey} yKey={yKey} colors={widget.colors || palette.chart} donut={type === 'donut'} palette={palette} width={w} height={h} onPointClick={onPointClick} />
       </div>
     );
   }
@@ -345,6 +345,7 @@ function DonutSvg({
   palette,
   width,
   height,
+  onPointClick,
 }: {
   data: Array<Record<string, string | number>>;
   xKey: string;
@@ -354,6 +355,7 @@ function DonutSvg({
   palette: DashboardSpec['theme']['palette'];
   width: number;
   height: number;
+  onPointClick?: (field: string, value: string) => void;
 }) {
   const size = Math.max(160, Math.min(height - 16, width * 0.45));
   const cx = 16 + size / 2;
@@ -389,7 +391,7 @@ function DonutSvg({
   });
   return (
     <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="100%" className="dash-plot" role="img">
-      {arcs.map((a, i) => <path key={i} d={a.dPath} fill={a.color} />)}
+      {arcs.map((a, i) => <path key={i} d={a.dPath} fill={a.color} onClick={() => onPointClick?.(xKey, a.label)} style={{ cursor: 'pointer' }} />)}
       {donut && (
         <text x={cx} y={cy + 4} textAnchor="middle" fontSize="13" fontWeight={600} fill={palette.text}>
           {formatMetric(total, metricFormat(yKey))}
@@ -468,6 +470,8 @@ function TreemapSvg({
   palette,
   width,
   height,
+  highlight,
+  onPointClick,
 }: {
   data: Array<Record<string, string | number>>;
   xKey: string;
@@ -476,6 +480,8 @@ function TreemapSvg({
   palette: DashboardSpec['theme']['palette'];
   width: number;
   height: number;
+  highlight?: string;
+  onPointClick?: (field: string, value: string) => void;
 }) {
   const items = data.map((d, i) => ({
     name: String(d[xKey] || d.name),
@@ -485,9 +491,11 @@ function TreemapSvg({
   const rects = squarify(items, 8, 8, width - 16, height - 16);
   return (
     <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="100%" className="dash-plot" role="img">
-      {rects.map((r) => (
-        <g key={r.item.name}>
-          <rect x={r.x} y={r.y} width={Math.max(0, r.w - 2)} height={Math.max(0, r.h - 2)} rx={6} fill={r.item.color} opacity={0.9} />
+      {rects.map((r) => {
+        const dimmed = Boolean(highlight && r.item.name !== highlight);
+        return (
+        <g key={r.item.name} onClick={() => onPointClick?.(xKey, r.item.name)} style={{ cursor: 'pointer' }}>
+          <rect x={r.x} y={r.y} width={Math.max(0, r.w - 2)} height={Math.max(0, r.h - 2)} rx={6} fill={r.item.color} opacity={dimmed ? 0.35 : 0.9} />
           {r.w > 56 && r.h > 28 && (
             <>
               <text x={r.x + 8} y={r.y + 18} fontSize="12" fontWeight={600} fill="#fff">{clip(r.item.name, 14)}</text>
@@ -495,7 +503,8 @@ function TreemapSvg({
             </>
           )}
         </g>
-      ))}
+        );
+      })}
       <title>{palette.label}</title>
     </svg>
   );

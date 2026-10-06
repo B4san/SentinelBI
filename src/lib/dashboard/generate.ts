@@ -7,7 +7,7 @@ import {
   type ResponseFormatStep,
 } from '../ai/openaiCompatible';
 import { geminiGenerate } from '../ai/geminiAdapter';
-import { PROVIDERS } from '../ai/providers';
+import { PROVIDERS, isOpenRouterFreeRouter } from '../ai/providers';
 import { resolveProviderConfig } from '../ai/resolve';
 import type { EnvLike } from '../ai/resolve';
 import { AIProviderError } from '../ai/types';
@@ -25,6 +25,7 @@ export interface GenerateAttempt {
   status?: number;
   ms: number;
   error?: string;
+  model?: string;
 }
 
 export interface GenerateDashboardResult {
@@ -145,25 +146,31 @@ export async function generateDashboardOnServer(
       }
     }
 
-    let useSchema = true;
+    const skipSchema = isOpenRouterFreeRouter(config.model);
+    let useSchema = !skipSchema;
     const modelCheckStart = Date.now();
-    try {
-      useSchema = await modelSupportsStructuredOutputs(config, fetchImpl);
-      attempts.push({ step: 'models', status: 200, ms: Date.now() - modelCheckStart });
-    } catch (error) {
-      useSchema = false;
-      attempts.push({
-        step: 'models',
-        status: statusOf(error) || 0,
-        ms: Date.now() - modelCheckStart,
-        error: error instanceof Error ? error.message : String(error),
-      });
+    if (skipSchema) {
+      attempts.push({ step: 'models', status: 200, ms: 0, error: 'openrouter/free skips json_schema' });
+    } else {
+      try {
+        useSchema = await modelSupportsStructuredOutputs(config, fetchImpl);
+        attempts.push({ step: 'models', status: 200, ms: Date.now() - modelCheckStart });
+      } catch (error) {
+        useSchema = false;
+        attempts.push({
+          step: 'models',
+          status: statusOf(error) || 0,
+          ms: Date.now() - modelCheckStart,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     const ladder: ResponseFormatStep[] = useSchema
       ? ['json_schema', 'json_object', 'plain']
       : ['json_object', 'plain'];
     let lastError = '';
+    let routedModel = config.model;
 
     for (const step of ladder) {
       if (timedOut()) {
@@ -172,10 +179,10 @@ export async function generateDashboardOnServer(
       }
       const t0 = Date.now();
       try {
-        const text = await openaiGenerate(config, [{ role: 'user', content: prompt }], {
+        const generated = await openaiGenerate(config, [{ role: 'user', content: prompt }], {
           json: step !== 'plain',
           temperature: 0.4,
-          maxTokens: step === 'json_schema' ? Number(env.AI_MAX_TOKENS || 8000) : Math.min(4000, Number(env.AI_MAX_TOKENS || 8000)),
+          maxTokens: Number(env.AI_MAX_TOKENS || 8000),
           jsonSchema: step === 'json_schema' ? DASHBOARD_JSON_SCHEMA : undefined,
           format: step,
           timeoutMs: remaining(),
@@ -184,7 +191,8 @@ export async function generateDashboardOnServer(
           rateLimitWaitMs: ctx.rateLimitWaitMs ?? Number(env.AI_RATE_LIMIT_WAIT_MS || 5000),
           reasoning: { effort: 'low' },
         });
-        const parsed = extractJsonObject(text);
+        if (generated.model) routedModel = generated.model;
+        const parsed = extractJsonObject(generated.text);
         const spec = validateDashboardSpec(parsed, {
           seed,
           archetype,
@@ -192,21 +200,24 @@ export async function generateDashboardOnServer(
           intent: ctx.intent,
           widgets: ctx.existing?.widgets,
         });
-        attempts.push({ step, status: 200, ms: Date.now() - t0 });
+        attempts.push({ step, status: 200, ms: Date.now() - t0, model: generated.model || routedModel });
         if (spec.widgets.length === 0) {
           lastError = `Model returned 0 widgets under ${step}.`;
           attempts[attempts.length - 1].error = lastError;
           continue;
         }
         return {
-          spec: lockUserTitle(withUniqueId(finalizeDashboardSpec(spec, ctx.datasets)), ctx.title),
+          spec: {
+            ...lockUserTitle(withUniqueId(finalizeDashboardSpec(spec, ctx.datasets)), ctx.title),
+            generatedBy: routedModel,
+          },
           source: 'ai',
           attempts,
         };
       } catch (error) {
         const status = statusOf(error);
         lastError = error instanceof Error ? error.message : String(error);
-        attempts.push({ step, status, ms: Date.now() - t0, error: lastError });
+        attempts.push({ step, status, ms: Date.now() - t0, error: lastError, model: routedModel });
         if (error instanceof GenerationTimeoutError || timedOut()) {
           const elapsed = Math.round((Date.now() - started) / 1000);
           return finishFallback(`timed out after ${elapsed}s at step ${step}`);

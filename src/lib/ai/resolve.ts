@@ -68,7 +68,9 @@ export function resolveProviderConfig(
   const baseUrl = envBase || userBase || def.defaultBaseUrl;
 
   const userModel = String(input.model || '').trim();
-  const envModel = String(env.AI_MODEL || '').trim();
+  const envModel = String(
+    (provider === 'openrouter' ? env.OPENROUTER_MODEL : '') || env.AI_MODEL || '',
+  ).trim();
   const model = envModel || userModel || def.defaultModel;
 
   const userKey = String(input.apiKey || '').trim();

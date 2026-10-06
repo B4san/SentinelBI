@@ -6,6 +6,7 @@ import { inferMetricPolarity, isFillerKpi, type MetricPolarity } from './metrics
 import {
   analyzeDataset,
   classifyFields,
+  isLowInformationCut,
   metricFormat,
   narrativeFromFindings,
   periodChange,
@@ -433,11 +434,27 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
     if ((chartType === 'line' || chartType === 'stepped-line') && times[0] && xField === times[0] && slot.featured) {
       chartType = 'area';
     }
+    let resolvedX = xField;
+    let resolvedY = yField;
+    if (resolvedX && resolvedY && cats.includes(resolvedX) && isLowInformationCut(primary.data || [], resolvedX, resolvedY)) {
+      const altDim = cats.find((c) => c !== resolvedX && !isLowInformationCut(primary.data || [], c, resolvedY));
+      const altMeasure = nums.find((n) => n !== resolvedY && !isLowInformationCut(primary.data || [], resolvedX, n) && metricFormat(n) !== 'percent');
+      if (altDim) {
+        resolvedX = altDim;
+      } else if (altMeasure) {
+        resolvedY = altMeasure;
+      } else if (times[0]) {
+        resolvedX = times[0];
+        chartType = slot.featured ? 'area' : 'line';
+      } else {
+        return;
+      }
+    }
     usedTypes.add(chartType);
-    usedEncodings.add(`${encoding}:${chartType}`);
+    usedEncodings.add(`${resolvedX}:${resolvedY}:${chartType}`);
 
-    const yPretty = prettyField(yField || 'value');
-    const xPretty = prettyField(xField || 'category');
+    const yPretty = prettyField(resolvedY || 'value');
+    const xPretty = prettyField(resolvedX || 'category');
     const budget = nums.find((n) => /budget/i.test(n));
     const intent = (ctx.intent || '').toLowerCase();
     if (intent && /aov|unit|helios|product/i.test(intent) && nums.includes('units') && slot.featured === false) {
@@ -446,14 +463,16 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
         // prefer a different breakdown than the default channel/region pair
       }
     }
-    const wantBullet = Boolean(budget && slot.prefer?.includes('bar') && /opex|ebitda/i.test(yField || ''));
+    const wantBullet = Boolean(budget && slot.prefer?.includes('bar') && /opex|ebitda/i.test(resolvedY || ''));
     const wantMultiples = Boolean(slot.prefer?.includes('area') === false && times[0] && cats[0] && chartType === 'line' && !slot.featured);
     if (wantBullet) chartType = 'bar';
-    if (slot.prefer?.includes('treemap')) chartType = 'treemap';
-    const series = wantBullet && budget && yField
-      ? [{ field: yField, style: 'bar' as const }, { field: budget, style: 'target' as const, label: prettyField(budget) }]
-      : budget && yField && /opex|revenue|ebitda/i.test(yField)
-        ? [{ field: yField, style: 'bar' as const }, { field: budget, style: 'dashed' as const, label: prettyField(budget) }]
+    if (slot.prefer?.includes('treemap') && resolvedX && resolvedY && !isLowInformationCut(primary.data || [], resolvedX, resolvedY)) {
+      chartType = 'treemap';
+    }
+    const series = wantBullet && budget && resolvedY
+      ? [{ field: resolvedY, style: 'bar' as const }, { field: budget, style: 'target' as const, label: prettyField(budget) }]
+      : budget && resolvedY && /opex|revenue|ebitda/i.test(resolvedY)
+        ? [{ field: resolvedY, style: 'bar' as const }, { field: budget, style: 'dashed' as const, label: prettyField(budget) }]
         : undefined;
     const componentId = wantBullet
       ? 'sbi.bullet-variance'
@@ -466,7 +485,7 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
         ? `${yPretty} by ${prettyField(cats[0])}`
         : chartType === 'treemap'
           ? `${yPretty} mix`
-          : yField && xField ? `${yPretty} by ${xPretty}` : 'Distribution';
+          : resolvedY && resolvedX ? `${yPretty} by ${xPretty}` : 'Distribution';
     widgets.push({
       id: `chart-${index}`,
       type: 'chart',
@@ -476,14 +495,14 @@ export function buildFallbackDashboard(ctx: GenerateDashboardContext): Dashboard
       role: slot.role || (slot.featured ? 'hero' : undefined),
       chartType,
       datasetId: primary.id,
-      xField: wantMultiples ? times[0] : xField,
-      yField,
+      xField: wantMultiples ? times[0] : resolvedX,
+      yField: resolvedY,
       componentId,
       series,
       targetField: budget,
       groupField: wantMultiples ? cats[0] : undefined,
       color: palette.chart[index % palette.chart.length],
-      aggregation: metricFormat(yField) === 'percent' ? 'avg' : 'sum',
+      aggregation: metricFormat(resolvedY) === 'percent' ? 'avg' : 'sum',
     });
     chartCursor += 1;
   });

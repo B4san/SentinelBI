@@ -191,6 +191,7 @@ export interface DashboardSpec {
   sections: DashboardSection[];
   widgets: DashboardWidget[];
   filters?: WidgetFilter[];
+  generatedBy?: string;
 }
 
 export interface SavedDashboard {

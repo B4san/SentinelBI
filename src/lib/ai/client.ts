@@ -1,6 +1,6 @@
-import { PROVIDERS } from './providers';
+import { PROVIDERS, isProviderId } from './providers';
 import { contentsToPrompt } from './resolve';
-import { AIProviderError, type GenerateRequest, type ModelInfo, type ProviderConfig, type ProviderId } from './types';
+import { AIProviderError, type GenerateRequest, type ModelInfo, type ProviderConfig } from './types';
 
 const SETTINGS_KEY = 'sentinel_ai_settings';
 
@@ -18,10 +18,11 @@ export function loadAiSettings(): ProviderConfig {
     const raw = localStorage.getItem(SETTINGS_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
     const legacyKey = localStorage.getItem('sentinel_api_key') || '';
+    const provider = isProviderId(parsed.provider) ? parsed.provider : DEFAULT_AI_SETTINGS.provider;
     return {
-      provider: parsed.provider || DEFAULT_AI_SETTINGS.provider,
-      baseUrl: parsed.baseUrl || PROVIDERS[parsed.provider as ProviderId]?.defaultBaseUrl || DEFAULT_AI_SETTINGS.baseUrl,
-      model: parsed.model || DEFAULT_AI_SETTINGS.model,
+      provider,
+      baseUrl: parsed.baseUrl || PROVIDERS[provider]?.defaultBaseUrl || DEFAULT_AI_SETTINGS.baseUrl,
+      model: parsed.model || PROVIDERS[provider]?.defaultModel || DEFAULT_AI_SETTINGS.model,
       apiKey: parsed.apiKey || legacyKey,
       stream: parsed.stream !== false,
     };

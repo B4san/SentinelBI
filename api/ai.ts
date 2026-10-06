@@ -52,15 +52,20 @@ export async function aiGenerateHandler(req: Request, res: Response) {
       return res.end();
     }
 
-    const text =
-      config.compatible === 'gemini'
-        ? await geminiGenerate(config, messages)
-        : await openaiGenerate(config, messages, { json: input.json, temperature: input.temperature });
+    let text = '';
+    let routed = config.model;
+    if (config.compatible === 'gemini') {
+      text = await geminiGenerate(config, messages);
+    } else {
+      const out = await openaiGenerate(config, messages, { json: input.json, temperature: input.temperature ?? 0.4, maxTokens: 8000 });
+      text = out.text;
+      routed = out.model || config.model;
+    }
 
     return res.json({
       text,
       provider: config.provider,
-      model: config.model,
+      model: routed,
     });
   } catch (error) {
     const mapped = toUserFacingError(error);

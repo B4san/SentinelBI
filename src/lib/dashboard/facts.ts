@@ -2,7 +2,7 @@ import { applyFilter, resolveDataset } from './aggregate';
 import { parseLocalDate } from './dates';
 import { aggregateNumber, formatMetric } from './format';
 import { isDerivedMeasure, looksLikeCountTitle } from './ids';
-import { classifyFields, metricFormat, periodChange, prettyField, rankedGroups, sparklineValues } from './insights';
+import { classifyFields, metricFormat, periodChange, prettyField, rankedGroups, sparklineValues, analyzeDataset, narrativeFromFindings } from './insights';
 import {
   computeDerivedValue,
   computeWidgetMeasure,
@@ -552,6 +552,42 @@ export function dedupeHeadlines(spec: DashboardSpec): DashboardSpec {
 
 function normalizePhrase(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+export function applyLiveCopy(
+  spec: DashboardSpec,
+  datasets: DashboardDataset[],
+  filters: WidgetFilter[] = [],
+): DashboardSpec {
+  if (!filters.length) return spec;
+  const filtered = datasets.map((dataset) => {
+    let rows = dataset.data || [];
+    for (const filter of filters) rows = applyFilter(rows, filter);
+    return { ...dataset, data: rows };
+  });
+  const findings = filtered[0] && filtered[0].data.length
+    ? analyzeDataset(filtered[0])
+    : [];
+  const story = narrativeFromFindings(findings, spec.intent);
+  const withStory: DashboardSpec = {
+    ...spec,
+    subtitle: story.headline,
+    narrative: story,
+    widgets: spec.widgets.map((widget) => {
+      if (widget.type !== 'insight') return widget;
+      const finding = findings[0];
+      return {
+        ...widget,
+        title: finding?.title || 'Key finding',
+        insight: {
+          title: finding?.title,
+          text: finding?.text || story.body,
+          tone: finding?.tone || 'neutral',
+        },
+      };
+    }),
+  };
+  return rewriteUnverifiedCopy(withStory, filtered);
 }
 
 export { proposeDerivedMeasures };

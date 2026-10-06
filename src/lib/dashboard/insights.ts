@@ -138,6 +138,26 @@ export function rankedGroups(
     .sort((a, b) => b.value - a.value);
 }
 
+/** True when a categorical cut has too few members or near-equal values (e.g. 3 flat cost-center bars). */
+export function isLowInformationCut(
+  rows: Record<string, unknown>[],
+  dimension?: string,
+  measure?: string,
+): boolean {
+  if (!dimension || !measure || /date|month|week|time/i.test(dimension)) return false;
+  const ranked = rankedGroups(rows, dimension, measure);
+  if (ranked.length <= 1) return true;
+  if (ranked.length > 6) return false;
+  const max = Math.max(...ranked.map((row) => row.value));
+  const min = Math.min(...ranked.map((row) => row.value));
+  if (max <= 0) return true;
+  const spread = (max - min) / max;
+  if (ranked.length <= 4 && spread < 0.12) return true;
+  const shares = ranked.map((row) => row.share);
+  const equalThirds = ranked.length === 3 && shares.every((s) => Math.abs(s - 1 / 3) < 0.04);
+  return equalThirds;
+}
+
 export function periodChange(
   rows: Record<string, unknown>[],
   timeField: string,

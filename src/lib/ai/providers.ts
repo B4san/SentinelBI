@@ -25,7 +25,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     label: 'OpenRouter',
     description: 'One key for hundreds of models (OpenAI, Anthropic, Gemini, open source).',
     defaultBaseUrl: 'https://openrouter.ai/api/v1',
-    defaultModel: 'openai/gpt-4o-mini',
+    defaultModel: 'openrouter/free',
     envKey: 'OPENROUTER_API_KEY',
     supportsModelList: true,
     requiresApiKey: true,
@@ -35,6 +35,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
       'X-Title': 'SentinelBI',
     },
     curatedModels: [
+      { id: 'openrouter/free', label: 'OpenRouter Free (auto-route)' },
       { id: 'openai/gpt-4o-mini', label: 'GPT-4o Mini' },
       { id: 'openai/gpt-4o', label: 'GPT-4o' },
       { id: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet' },
@@ -172,4 +173,10 @@ export function isProviderId(value: unknown): value is ProviderId {
 
 export function normalizeBaseUrl(url: string): string {
   return String(url || '').trim().replace(/\/+$/, '');
+}
+
+/** OpenRouter's `openrouter/free` router picks a different free model per request. */
+export function isOpenRouterFreeRouter(model?: string): boolean {
+  const id = String(model || '').trim().toLowerCase();
+  return id === 'openrouter/free' || id === 'openrouter/auto' || id.endsWith('/free:router');
 }

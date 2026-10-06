@@ -1,6 +1,7 @@
-import { repairCatalogWidgets } from './catalog';
+import { nearestComponent, repairCatalogWidgets } from './catalog';
 import { attachComputedFacts, dedupeHeadlines, rewriteUnverifiedCopy } from './facts';
 import { isDerivedMeasure } from './ids';
+import { classifyFields, isLowInformationCut, metricFormat, prettyField } from './insights';
 import { inferAggregation } from './measures';
 import { autoTimeGrain } from './timeGrain';
 import type { DashboardDataset, DashboardSpec, DashboardWidget } from './types';
@@ -38,10 +39,56 @@ export function finalizeDashboardSpec(
   opts: { verifyCopy?: boolean } = {},
 ): DashboardSpec {
   const repaired = repairCatalogWidgets(spec, datasets);
-  const unique = fillGridGaps(closeEmptyBands(dropDuplicateEncodings(repaired, datasets)));
+  const unique = fillGridGaps(closeEmptyBands(dropLowInformationCharts(dropDuplicateEncodings(repaired, datasets), datasets)));
   const computed = attachComputedFacts(unique, datasets);
   const verified = opts.verifyCopy === false ? computed : rewriteUnverifiedCopy(computed, datasets);
   return dedupeHeadlines(verified);
+}
+
+export function dropLowInformationCharts(spec: DashboardSpec, datasets: DashboardDataset[]): DashboardSpec {
+  const widgets: DashboardWidget[] = [];
+  for (const widget of spec.widgets) {
+    if (widget.type !== 'chart') {
+      widgets.push(widget);
+      continue;
+    }
+    if (widget.chartType === 'line' || widget.chartType === 'area' || widget.chartType === 'stepped-line' || (widget.xField && /date|month|week/i.test(widget.xField))) {
+      widgets.push(widget);
+      continue;
+    }
+    const dataset = datasets.find((d) => d.id === widget.datasetId) || datasets[0];
+    if (!dataset || !isLowInformationCut(dataset.data || [], widget.xField, widget.yField)) {
+      widgets.push(widget);
+      continue;
+    }
+    const fields = classifyFields(dataset);
+    const yField = widget.yField;
+    const xField = widget.xField;
+    const altDim = fields.dimensions.find((c) => c !== xField && yField && !isLowInformationCut(dataset.data || [], c, yField));
+    const altMeasure = fields.measures.find((n) => n !== yField && xField && !isLowInformationCut(dataset.data || [], xField, n) && metricFormat(n) !== 'percent');
+    if (altDim && yField) {
+      widgets.push({
+        ...widget,
+        xField: altDim,
+        title: `${prettyField(yField)} by ${prettyField(altDim)}`,
+      });
+    } else if (altMeasure && xField) {
+      widgets.push({
+        ...widget,
+        yField: altMeasure,
+        title: `${prettyField(altMeasure)} by ${prettyField(xField)}`,
+      });
+    } else if (fields.time[0] && yField) {
+      widgets.push({
+        ...widget,
+        xField: fields.time[0],
+        chartType: 'area',
+        componentId: nearestComponent(undefined, 'chart', 'area').id,
+        title: `${prettyField(yField)} trend`,
+      });
+    }
+  }
+  return { ...spec, widgets };
 }
 
 export function closeEmptyBands(spec: DashboardSpec): DashboardSpec {

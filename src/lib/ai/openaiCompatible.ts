@@ -100,6 +100,18 @@ export function extractChatText(payload: unknown): string {
   return '';
 }
 
+export function extractRoutedModel(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const rec = payload as Record<string, unknown>;
+  if (typeof rec.model === 'string' && rec.model.trim()) return rec.model.trim();
+  const choices = rec.choices;
+  if (Array.isArray(choices) && choices[0] && typeof choices[0] === 'object') {
+    const nested = (choices[0] as { model?: unknown }).model;
+    if (typeof nested === 'string' && nested.trim()) return nested.trim();
+  }
+  return undefined;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -202,28 +214,40 @@ async function postChat(
   }
 }
 
+export interface GenerateTextResult {
+  text: string;
+  model?: string;
+}
+
 export async function openaiGenerate(
   config: ResolvedProviderConfig,
   messages: { role: string; content: string }[],
   opts: OpenaiGenerateOpts = {},
-): Promise<string> {
+): Promise<GenerateTextResult> {
   const format: ResponseFormatStep = opts.format || (opts.jsonSchema ? 'json_schema' : opts.json ? 'json_object' : 'plain');
   const retries = opts.retries ?? 2;
   let lastStatus = 0;
   let lastRaw = '';
   let lastError = '';
   let waitedOn429 = false;
+  let routedModel: string | undefined;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
-    const result = await postChat(config, messages, opts, format);
+    const result = await postChat(config, messages, { ...opts, maxTokens: opts.maxTokens ?? 8000, temperature: opts.temperature ?? 0.4 }, format);
     lastStatus = result.status;
     lastRaw = result.raw;
+    routedModel = extractRoutedModel(result.payload) || routedModel;
 
     if (result.status === 429) {
       lastError = chatPayloadError(result.payload) || result.raw || '429 rate limited';
       if (!waitedOn429) {
         waitedOn429 = true;
-        await sleep(parseRetryAfterMs(result.headers, opts.rateLimitWaitMs ?? 5_000));
+        const budget = Math.max(0, (opts.timeoutMs ?? GENERATE_TIMEOUT_MS) - 250);
+        const waitMs = Math.min(parseRetryAfterMs(result.headers, opts.rateLimitWaitMs ?? 5_000), budget);
+        if (waitMs <= 0) {
+          throw mapProviderError({ status: 429, body: lastError, provider: config.provider });
+        }
+        await sleep(waitMs);
         continue;
       }
       throw mapProviderError({ status: 429, body: lastError, provider: config.provider });
@@ -259,9 +283,9 @@ export async function openaiGenerate(
 
     if (typeof result.payload === 'object') {
       const text = extractChatText(result.payload);
-      if (text) return text;
+      if (text) return { text, model: extractRoutedModel(result.payload) || routedModel };
     }
-    if (typeof result.raw === 'string' && result.raw.trim()) return result.raw;
+    if (typeof result.raw === 'string' && result.raw.trim()) return { text: result.raw, model: routedModel };
     lastError = 'Empty model response';
     if (attempt < retries) await sleep(400 * (attempt + 1));
   }

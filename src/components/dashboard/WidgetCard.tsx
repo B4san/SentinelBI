@@ -223,7 +223,7 @@ function WidgetBody({
     const model = prepareTableModel(datasets, widget, filters);
     const compareOn = Boolean(widget.compare);
     return (
-      <div className="h-full text-[12px] overflow-auto">
+      <div className="h-auto min-h-0 text-[12px] overflow-visible">
         <table className="w-full table-fixed">
           <thead>
             <tr>
